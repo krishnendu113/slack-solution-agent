@@ -1,0 +1,17 @@
+{
+  "_comment": "MCP server config. URLs and tokens come from .env — never hardcode secrets here.",
+  "servers": [
+{
+      "name": "capillary-docs",
+      "urlEnvVar": "CAPILLARY_DOCS_MCP_URL",
+      "tokenEnvVar": "CAPILLARY_DOCS_MCP_TOKEN",
+      "description": "Capillary documentation via Kapa AI"
+    },
+    {
+      "name": "capillary-api-docs",
+      "urlEnvVar": "CAPILLARY_API_DOCS_MCP_URL",
+      "tokenEnvVar": null,
+      "description": "Capillary product API specs and documentation"
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "skills": [
+    {
+      "id": "capillary-sdd-writer",
+      "folder": "capillary-sdd-writer",
+      "description": "Generate a developer-ready Capillary SDD from a Jira epic ID or BRD text. Produces Full SDD for new integrations or Lite SDD for CRs.",
+      "triggers": [
+        "sdd", "system design document", "lld", "low level design",
+        "implementation design", "technical spec", "neo workflow",
+        "connect+", "vulcan", "technical document", "design doc"
+      ]
+    },
+    {
+      "id": "solution-gap-analyzer",
+      "folder": "solution-gap-analyzer",
+      "description": "Analyze a BRD to predict Capillary match percentage. Produces domain-by-domain gap analysis with verified API evidence.",
+      "triggers": [
+        "gap", "gap analysis", "brd", "business requirements",
+        "sessionm", "match", "capability", "fit", "migration",
+        "coverage", "feature analysis", "solution fit"
+      ]
+    },
+    {
+      "id": "excalidraw-diagram",
+      "folder": "excalidraw-diagram",
+      "description": "Create Excalidraw diagram JSON files for visual architecture, workflows, and system flows.",
+      "triggers": [
+        "diagram", "flow diagram", "architecture diagram", "excalidraw",
+        "flowchart", "visual", "draw", "workflow diagram", "system flow"
+      ]
+    }
+  ]
+}
