@@ -7,6 +7,7 @@
 
 import 'dotenv/config';
 import express from 'express';
+import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import path from 'path';
 import { logMcpStatus } from './mcpConfig.js';
@@ -17,24 +18,67 @@ import * as store from './store.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 
-// ─── Basic Auth ──────────────────────────────────────────────────────────────
+// ─── Session Auth ────────────────────────────────────────────────────────────
 const AUTH_USER = process.env.AUTH_USER || 'admin';
 const AUTH_PASS = process.env.AUTH_PASS || '';
+const SESSION_SECRET = AUTH_PASS ? crypto.createHash('sha256').update(AUTH_PASS).digest('hex') : '';
 
-if (AUTH_PASS) {
-  app.use((req, res, next) => {
-    const header = req.headers.authorization || '';
-    if (header.startsWith('Basic ')) {
-      const decoded = Buffer.from(header.slice(6), 'base64').toString();
-      const [user, pass] = decoded.split(':');
-      if (user === AUTH_USER && pass === AUTH_PASS) return next();
-    }
-    res.set('WWW-Authenticate', 'Basic realm="Capillary Solution Agent"');
-    res.status(401).send('Authentication required.');
-  });
+function createSessionToken(user) {
+  const payload = `${user}:${Date.now()}`;
+  const sig = crypto.createHmac('sha256', SESSION_SECRET).update(payload).digest('hex');
+  return `${Buffer.from(payload).toString('base64')}.${sig}`;
+}
+
+function validateSessionToken(token) {
+  if (!token || !SESSION_SECRET) return false;
+  const [payloadB64, sig] = token.split('.');
+  if (!payloadB64 || !sig) return false;
+  const payload = Buffer.from(payloadB64, 'base64').toString();
+  const expected = crypto.createHmac('sha256', SESSION_SECRET).update(payload).digest('hex');
+  return crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected));
+}
+
+function getCookie(req, name) {
+  const cookies = req.headers.cookie || '';
+  const match = cookies.split(';').map(c => c.trim()).find(c => c.startsWith(`${name}=`));
+  return match ? match.slice(name.length + 1) : null;
 }
 
 app.use(express.json());
+
+// Login/logout endpoints (before auth middleware)
+app.post('/api/login', (req, res) => {
+  const { username, password } = req.body || {};
+  if (username === AUTH_USER && password === AUTH_PASS && AUTH_PASS) {
+    const token = createSessionToken(username);
+    res.set('Set-Cookie', `session=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=604800`);
+    return res.json({ ok: true });
+  }
+  res.status(401).json({ error: 'Invalid username or password.' });
+});
+
+app.get('/api/logout', (_req, res) => {
+  res.set('Set-Cookie', 'session=; Path=/; HttpOnly; Max-Age=0');
+  res.redirect('/login.html');
+});
+
+// Auth middleware — protect everything except login page and its assets
+if (AUTH_PASS) {
+  app.use((req, res, next) => {
+    // Allow login page and its resources
+    if (req.path === '/login.html' || req.path === '/api/login') return next();
+
+    const token = getCookie(req, 'session');
+    if (validateSessionToken(token)) return next();
+
+    // Not authenticated
+    if (req.path.startsWith('/api/')) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+    return res.redirect('/login.html');
+  });
+}
+
 app.use(express.static(path.join(__dirname, '../public')));
 
 // ─── API: Conversations ──────────────────────────────────────────────────────
