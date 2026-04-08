@@ -205,6 +205,39 @@ async function handleToolCall(name, input) {
   }
 }
 
+// ─── Tool Summary Helpers ────────────────────────────────────────────────────
+
+function inputSummary(name, input) {
+  switch (name) {
+    case 'get_jira_ticket': return input.ticket_id || '';
+    case 'search_jira': return `"${input.query || ''}"`;
+    case 'search_confluence': return `"${input.query || ''}"`;
+    case 'get_confluence_page': return `page ${input.page_id || ''}`;
+    default: return name;
+  }
+}
+
+function resultSummary(name, result) {
+  try {
+    if (result.startsWith('Error:') || result.startsWith('Jira') || result.startsWith('Confluence')) return result;
+    const parsed = JSON.parse(result);
+    switch (name) {
+      case 'get_jira_ticket':
+        return `"${parsed.summary}" (${parsed.status}, ${parsed.priority})`;
+      case 'search_jira':
+        return Array.isArray(parsed) ? `Found ${parsed.length} ticket(s)` : 'Done';
+      case 'search_confluence':
+        return Array.isArray(parsed) ? `Found ${parsed.length} page(s)` : 'Done';
+      case 'get_confluence_page':
+        return `"${parsed.title || 'Untitled'}"`;
+      default:
+        return 'Done';
+    }
+  } catch {
+    return result.length > 80 ? result.slice(0, 80) + '...' : result;
+  }
+}
+
 // ─── SDK Client ──────────────────────────────────────────────────────────────
 
 let client = null;
@@ -291,7 +324,7 @@ When you receive a request:
 
 export { AgentError };
 
-export async function runAgent({ problemText, history, onStatus, onToken }) {
+export async function runAgent({ problemText, history, onStatus, onToken, onToolStatus }) {
   if (!process.env.ANTHROPIC_API_KEY) {
     throw new AgentError("No API key found. Add ANTHROPIC_API_KEY to .env.", 'ANTHROPIC_API_KEY not set');
   }
@@ -353,7 +386,6 @@ export async function runAgent({ problemText, history, onStatus, onToken }) {
         } else if (event.type === 'content_block_start') {
           currentBlock = { ...event.content_block, _text: '' };
           if (currentBlock.type === 'tool_use') {
-            await onStatus(`🔧 Using ${currentBlock.name}...`);
             currentBlock._inputJson = '';
           }
         } else if (event.type === 'content_block_delta') {
@@ -388,15 +420,24 @@ export async function runAgent({ problemText, history, onStatus, onToken }) {
         const toolResults = [];
         for (const block of contentBlocks) {
           if (block.type !== 'tool_use') continue;
+          const summary = inputSummary(block.name, block.input);
+          const toolId = `${block.name}-${block.id}`;
+
+          // Notify: tool running
+          if (onToolStatus) await onToolStatus({ id: toolId, name: block.name, inputSummary: summary, status: 'running' });
+
           try {
             const result = await handleToolCall(block.name, block.input);
             toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: result });
+            // Notify: tool done
+            if (onToolStatus) await onToolStatus({ id: toolId, name: block.name, inputSummary: summary, status: 'done', resultSummary: resultSummary(block.name, result) });
           } catch (err) {
             toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: `Error: ${err.message}`, is_error: true });
+            if (onToolStatus) await onToolStatus({ id: toolId, name: block.name, inputSummary: summary, status: 'error', resultSummary: err.message });
           }
         }
         messages.push({ role: 'user', content: toolResults });
-        continue; // next turn — Claude will process tool results
+        continue;
       }
 
       // Claude is done (stop_reason: 'end_turn' or 'max_tokens')

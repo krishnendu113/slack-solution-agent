@@ -17,6 +17,23 @@ import * as store from './store.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 
+// ─── Basic Auth ──────────────────────────────────────────────────────────────
+const AUTH_USER = process.env.AUTH_USER || 'admin';
+const AUTH_PASS = process.env.AUTH_PASS || '';
+
+if (AUTH_PASS) {
+  app.use((req, res, next) => {
+    const header = req.headers.authorization || '';
+    if (header.startsWith('Basic ')) {
+      const decoded = Buffer.from(header.slice(6), 'base64').toString();
+      const [user, pass] = decoded.split(':');
+      if (user === AUTH_USER && pass === AUTH_PASS) return next();
+    }
+    res.set('WWW-Authenticate', 'Basic realm="Capillary Solution Agent"');
+    res.status(401).send('Authentication required.');
+  });
+}
+
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '../public')));
 
@@ -102,6 +119,7 @@ app.post('/api/conversations/:id/messages', upload.array('files', 5), async (req
       history,
       onStatus: async (statusText) => sendEvent('status', { text: statusText }),
       onToken: async (text) => sendEvent('token', { text }),
+      onToolStatus: async (info) => sendEvent('tool_status', info),
     });
 
     // Handle escalation

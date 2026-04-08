@@ -103,6 +103,17 @@
     .thinking-dots span:nth-child(3) { animation-delay: 0.4s; }
     @keyframes pulse { 0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); } 40% { opacity: 1; transform: scale(1); } }
 
+    /* Tool activity indicators */
+    .tool-indicators { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
+    .tool-indicator { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-muted); padding: 4px 0; line-height: 1.4; }
+    .tool-indicator.done .tool-icon { color: var(--success); }
+    .tool-indicator.error .tool-icon { color: var(--danger); }
+    .tool-icon { width: 16px; text-align: center; flex-shrink: 0; }
+    .tool-spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--text-muted); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .tool-label { color: var(--text-secondary); }
+    .tool-result { color: var(--text-muted); margin-left: 4px; }
+
     /* Code block download bar */
     .code-block-wrapper { position: relative; margin: 12px 0; }
     .code-download-bar { display: flex; justify-content: space-between; align-items: center; background: #161b22; padding: 6px 14px; border-radius: 8px 8px 0 0; border: 1px solid var(--border); border-bottom: none; font-size: 12px; color: var(--text-secondary); }
@@ -335,8 +346,36 @@ async function sendMessage() {
     // Streaming state
     let streamingBubble = null;
     let streamingMsgDiv = null;
+    let toolIndicatorsEl = null;
     let accumulatedText = '';
     let renderTimeout = null;
+
+    // Helper: ensure the assistant message container + tool indicators exist
+    function ensureMsgContainer() {
+      if (streamingMsgDiv) return;
+      thinkingEl.remove();
+      streamingMsgDiv = document.createElement('div');
+      streamingMsgDiv.className = 'message assistant';
+      streamingMsgDiv.innerHTML = '<div class="message-role">Agent</div>';
+      $inner.appendChild(streamingMsgDiv);
+    }
+
+    function ensureToolIndicators() {
+      if (toolIndicatorsEl) return;
+      ensureMsgContainer();
+      toolIndicatorsEl = document.createElement('div');
+      toolIndicatorsEl.className = 'tool-indicators';
+      streamingMsgDiv.appendChild(toolIndicatorsEl);
+    }
+
+    function ensureStreamingBubble() {
+      if (streamingBubble) return;
+      ensureMsgContainer();
+      const bubble = document.createElement('div');
+      bubble.className = 'message-bubble';
+      streamingMsgDiv.appendChild(bubble);
+      streamingBubble = bubble;
+    }
 
     while (true) {
       const { done, value } = await reader.read();
@@ -356,18 +395,29 @@ async function sendMessage() {
           if (eventType === 'status') {
             const thinkText = thinkingEl.querySelector('.thinking-text');
             if (thinkText) thinkText.textContent = data.text;
-          } else if (eventType === 'token') {
-            // First token — replace thinking with streaming bubble
-            if (!streamingBubble) {
-              thinkingEl.remove();
-              streamingMsgDiv = document.createElement('div');
-              streamingMsgDiv.className = 'message assistant';
-              streamingMsgDiv.innerHTML = '<div class="message-role">Agent</div><div class="message-bubble"></div>';
-              $inner.appendChild(streamingMsgDiv);
-              streamingBubble = streamingMsgDiv.querySelector('.message-bubble');
+          } else if (eventType === 'tool_status') {
+            ensureToolIndicators();
+            const toolEl = toolIndicatorsEl.querySelector(`[data-tool-id="${data.id}"]`);
+            if (data.status === 'running') {
+              const label = toolDisplayLabel(data.name, data.inputSummary, 'running');
+              const pill = document.createElement('div');
+              pill.className = 'tool-indicator running';
+              pill.dataset.toolId = data.id;
+              pill.innerHTML = `<span class="tool-icon"><span class="tool-spinner"></span></span><span class="tool-label">${escapeHtml(label)}</span>`;
+              toolIndicatorsEl.appendChild(pill);
+              scrollToBottom();
+            } else if (toolEl) {
+              const isDone = data.status === 'done';
+              toolEl.className = `tool-indicator ${isDone ? 'done' : 'error'}`;
+              const icon = isDone ? '✓' : '✗';
+              const label = toolDisplayLabel(data.name, data.inputSummary, data.status);
+              const result = data.resultSummary ? ` — ${data.resultSummary}` : '';
+              toolEl.innerHTML = `<span class="tool-icon">${icon}</span><span class="tool-label">${escapeHtml(label)}</span><span class="tool-result">${escapeHtml(result)}</span>`;
+              scrollToBottom();
             }
+          } else if (eventType === 'token') {
+            ensureStreamingBubble();
             accumulatedText += data.text;
-            // Debounced markdown rendering
             if (!renderTimeout) {
               renderTimeout = setTimeout(() => {
                 streamingBubble.innerHTML = marked.parse(accumulatedText);
@@ -376,17 +426,15 @@ async function sendMessage() {
               }, 80);
             }
           } else if (eventType === 'message') {
-            // Final message — do a clean render with metadata
             if (renderTimeout) { clearTimeout(renderTimeout); renderTimeout = null; }
             thinkingEl.remove();
             if (streamingMsgDiv) {
-              // Update streaming bubble with final content + metadata
+              ensureStreamingBubble();
               streamingBubble.innerHTML = marked.parse(data.content || accumulatedText);
               postProcessCodeBlocks(streamingBubble);
               if (data.skillsUsed?.length) streamingMsgDiv.insertAdjacentHTML('beforeend', `<div class="skill-badges">${data.skillsUsed.map(s => `<span class="skill-badge">${escapeHtml(s)}</span>`).join('')}</div>`);
               if (data.escalated) streamingMsgDiv.insertAdjacentHTML('beforeend', '<div class="escalation-banner">This query has been flagged for SA review.</div>');
             } else {
-              // No tokens received — render full message (fallback)
               appendMessageToUI(data);
             }
           } else if (eventType === 'error') {
@@ -421,6 +469,14 @@ async function sendMessage() {
     $sendBtn.disabled = false;
     $input.focus();
   }
+}
+
+// ─── Tool display labels ─────────────────────────────────────────────────────
+function toolDisplayLabel(name, inputSummary, status) {
+  const verb = status === 'running' ? { get_jira_ticket: 'Fetching', search_jira: 'Searching Jira for', search_confluence: 'Searching Confluence for', get_confluence_page: 'Loading page' }
+    : { get_jira_ticket: 'Fetched', search_jira: 'Searched Jira for', search_confluence: 'Searched Confluence for', get_confluence_page: 'Loaded page' };
+  const v = (status === 'running' ? verb : verb)[name] || (status === 'running' ? `Using ${name}` : `Used ${name}`);
+  return inputSummary ? `${v} ${inputSummary}` : v;
 }
 
 // ─── Code block download ─────────────────────────────────────────────────────
