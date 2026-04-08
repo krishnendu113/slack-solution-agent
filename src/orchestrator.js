@@ -435,7 +435,12 @@ export async function runAgent({ problemText, history, onStatus, onToken, onTool
         }
       }
 
-      messages.push({ role: 'assistant', content: contentBlocks });
+      // Strip internal metadata before sending back to API
+      const cleanBlocks = contentBlocks.map(b => {
+        if (b.type === 'tool_use') return { type: 'tool_use', id: b.id, name: b.name, input: b.input };
+        return b;
+      });
+      messages.push({ role: 'assistant', content: cleanBlocks });
 
       if (stopReason === 'tool_use') {
         const toolResults = [];
