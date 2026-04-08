@@ -219,22 +219,28 @@ function inputSummary(name, input) {
 
 function resultSummary(name, result) {
   try {
-    if (result.startsWith('Error:') || result.startsWith('Jira') || result.startsWith('Confluence')) return result;
+    if (result.startsWith('Error:') || result.startsWith('Jira') || result.startsWith('Confluence')) return { text: result };
     const parsed = JSON.parse(result);
     switch (name) {
       case 'get_jira_ticket':
-        return `"${parsed.summary}" (${parsed.status}, ${parsed.priority})`;
-      case 'search_jira':
-        return Array.isArray(parsed) ? `Found ${parsed.length} ticket(s)` : 'Done';
-      case 'search_confluence':
-        return Array.isArray(parsed) ? `Found ${parsed.length} page(s)` : 'Done';
+        return { text: `"${parsed.summary}" (${parsed.status}, ${parsed.priority})`, url: parsed.url };
+      case 'search_jira': {
+        if (!Array.isArray(parsed)) return { text: 'Done' };
+        const links = parsed.map(t => ({ label: t.id, url: t.url }));
+        return { text: `Found ${parsed.length} ticket(s)`, links };
+      }
+      case 'search_confluence': {
+        if (!Array.isArray(parsed)) return { text: 'Done' };
+        const links = parsed.map(p => ({ label: p.title?.slice(0, 40) || p.id, url: p.url }));
+        return { text: `Found ${parsed.length} page(s)`, links };
+      }
       case 'get_confluence_page':
-        return `"${parsed.title || 'Untitled'}"`;
+        return { text: `"${parsed.title || 'Untitled'}"`, url: parsed.url };
       default:
-        return 'Done';
+        return { text: 'Done' };
     }
   } catch {
-    return result.length > 80 ? result.slice(0, 80) + '...' : result;
+    return { text: result.length > 80 ? result.slice(0, 80) + '...' : result };
   }
 }
 
@@ -430,10 +436,11 @@ export async function runAgent({ problemText, history, onStatus, onToken, onTool
             const result = await handleToolCall(block.name, block.input);
             toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: result });
             // Notify: tool done
-            if (onToolStatus) await onToolStatus({ id: toolId, name: block.name, inputSummary: summary, status: 'done', resultSummary: resultSummary(block.name, result) });
+            const rs = resultSummary(block.name, result);
+            if (onToolStatus) await onToolStatus({ id: toolId, name: block.name, inputSummary: summary, status: 'done', ...rs });
           } catch (err) {
             toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: `Error: ${err.message}`, is_error: true });
-            if (onToolStatus) await onToolStatus({ id: toolId, name: block.name, inputSummary: summary, status: 'error', resultSummary: err.message });
+            if (onToolStatus) await onToolStatus({ id: toolId, name: block.name, inputSummary: summary, status: 'error', text: err.message });
           }
         }
         messages.push({ role: 'user', content: toolResults });

@@ -113,6 +113,8 @@
     @keyframes spin { to { transform: rotate(360deg); } }
     .tool-label { color: var(--text-secondary); }
     .tool-result { color: var(--text-muted); margin-left: 4px; }
+    .tool-result a { color: var(--accent); text-decoration: none; }
+    .tool-result a:hover { text-decoration: underline; }
 
     /* Code block download bar */
     .code-block-wrapper { position: relative; margin: 12px 0; }
@@ -365,7 +367,12 @@ async function sendMessage() {
       ensureMsgContainer();
       toolIndicatorsEl = document.createElement('div');
       toolIndicatorsEl.className = 'tool-indicators';
-      streamingMsgDiv.appendChild(toolIndicatorsEl);
+      // Always insert before the bubble (if it exists), so indicators stay on top
+      if (streamingBubble) {
+        streamingMsgDiv.insertBefore(toolIndicatorsEl, streamingBubble);
+      } else {
+        streamingMsgDiv.appendChild(toolIndicatorsEl);
+      }
     }
 
     function ensureStreamingBubble() {
@@ -373,6 +380,7 @@ async function sendMessage() {
       ensureMsgContainer();
       const bubble = document.createElement('div');
       bubble.className = 'message-bubble';
+      // Always append bubble at the end (after indicators)
       streamingMsgDiv.appendChild(bubble);
       streamingBubble = bubble;
     }
@@ -411,8 +419,20 @@ async function sendMessage() {
               toolEl.className = `tool-indicator ${isDone ? 'done' : 'error'}`;
               const icon = isDone ? '✓' : '✗';
               const label = toolDisplayLabel(data.name, data.inputSummary, data.status);
-              const result = data.resultSummary ? ` — ${data.resultSummary}` : '';
-              toolEl.innerHTML = `<span class="tool-icon">${icon}</span><span class="tool-label">${escapeHtml(label)}</span><span class="tool-result">${escapeHtml(result)}</span>`;
+              // Build result with clickable links
+              let resultHtml = '';
+              if (data.text) {
+                if (data.url) {
+                  resultHtml = ` — <a href="${escapeHtml(data.url)}" target="_blank" rel="noopener">${escapeHtml(data.text)}</a>`;
+                } else {
+                  resultHtml = ` — ${escapeHtml(data.text)}`;
+                }
+              }
+              if (data.links?.length) {
+                const linkHtml = data.links.map(l => `<a href="${escapeHtml(l.url)}" target="_blank" rel="noopener">${escapeHtml(l.label)}</a>`).join(', ');
+                resultHtml += ` [${linkHtml}]`;
+              }
+              toolEl.innerHTML = `<span class="tool-icon">${icon}</span><span class="tool-label">${escapeHtml(label)}</span><span class="tool-result">${resultHtml}</span>`;
               scrollToBottom();
             }
           } else if (eventType === 'token') {
