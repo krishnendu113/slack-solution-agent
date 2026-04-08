@@ -164,6 +164,7 @@ app.post('/api/conversations/:id/messages', upload.array('files', 5), async (req
       onStatus: async (statusText) => sendEvent('status', { text: statusText }),
       onToken: async (text) => sendEvent('token', { text }),
       onToolStatus: async (info) => sendEvent('tool_status', info),
+      onSkillActive: async (info) => sendEvent('skill_active', info),
     });
 
     // Handle escalation
@@ -212,12 +213,17 @@ const PORT = process.env.PORT || 3000;
     console.log(`\n✅ Capillary Solution Agent running at http://localhost:${PORT}`);
     logMcpStatus();
 
-    // Log Jira/Confluence REST API status
-    const jiraOk = !!(process.env.JIRA_BASE_URL && process.env.JIRA_EMAIL && process.env.JIRA_API_TOKEN);
-    const confOk = !!(process.env.CONFLUENCE_BASE_URL && process.env.JIRA_EMAIL && process.env.CONFLUENCE_API_TOKEN);
-    console.log('── REST API Status ─────────────────────────');
-    console.log(`  ${jiraOk ? '✓' : '✗'} Jira               Direct ticket fetch + JQL search`);
-    console.log(`  ${confOk ? '✓' : '✗'} Confluence          CQL page search`);
+    // Log data access mode
+    const hasAtlassianMcp = !!process.env.ATLASSIAN_MCP_URL;
+    const hasJiraRest = !!(process.env.JIRA_BASE_URL && process.env.JIRA_EMAIL && process.env.JIRA_API_TOKEN);
+    console.log('── Data Access ─────────────────────────────');
+    if (hasAtlassianMcp) {
+      console.log('  ✓ Atlassian MCP     Jira + Confluence via MCP (preferred)');
+    } else if (hasJiraRest) {
+      console.log('  ✓ Jira/Confluence   REST API fallback (set ATLASSIAN_MCP_URL for MCP)');
+    } else {
+      console.log('  ✗ Jira/Confluence   Not configured');
+    }
     console.log('────────────────────────────────────────────\n');
   });
 })();

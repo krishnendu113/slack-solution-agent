@@ -2,17 +2,17 @@
  * orchestrator.js
  *
  * Agentic orchestrator using the Anthropic SDK:
- *   - Claude decides when to search Jira/Confluence (tool use)
- *   - MCP servers for Capillary docs (SDK handles protocol)
- *   - Dynamic skill loading into system prompt
- *   - Streaming with token-by-token forwarding
+ *   - Atlassian MCP for Jira/Confluence (preferred) or REST API fallback
+ *   - Capillary docs MCP
+ *   - Skill tools (list_skills, activate_skill)
+ *   - Streaming with token-by-token + tool status forwarding
  */
 
 import Anthropic from '@anthropic-ai/sdk';
 import { getMcpServers } from './mcpConfig.js';
-import { loadSkillsForProblem } from './skillLoader.js';
+import { loadSkillsForProblem, loadSkill, listSkills } from './skillLoader.js';
 
-// ─── Jira & Confluence helpers (inlined from former tools/) ──────────────────
+// ─── REST API fallback helpers (used only when Atlassian MCP is not configured) ─
 
 function jiraAuth() {
   const baseUrl = process.env.JIRA_BASE_URL;
@@ -66,58 +66,55 @@ function htmlToPlainText(html) {
     .replace(/\n{3,}/g, '\n\n').trim();
 }
 
-function escapeQuery(str) {
-  return str.replace(/["\\\n\r]/g, ch => ch === '"' ? '\\"' : ch === '\\' ? '\\\\' : ' ');
+function sanitiseQuery(str) {
+  return str
+    .replace(/\|\||&&|[!~^(){}\[\]:]/g, ' ')
+    .replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+    .replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ')
+    .trim().slice(0, 100);
 }
 
-// ─── Tool Definitions (Claude calls these during inference) ──────────────────
+// ─── Tool Definitions ────────────────────────────────────────────────────────
 
-const TOOL_DEFINITIONS = [
+// REST fallback tools — only included when Atlassian MCP is NOT configured
+const REST_TOOL_DEFINITIONS = [
   {
     name: 'get_jira_ticket',
-    description: 'Fetch a specific Jira ticket by its ID (e.g. PSV-27923, PROJ-1234). Returns summary, description, status, priority, type, labels, and URL.',
-    input_schema: {
-      type: 'object',
-      properties: { ticket_id: { type: 'string', description: 'Jira ticket ID, e.g. PSV-27923' } },
-      required: ['ticket_id'],
-    },
+    description: 'Fetch a specific Jira ticket by its ID (e.g. PSV-27923). Returns summary, description, status, priority, type, labels, and URL.',
+    input_schema: { type: 'object', properties: { ticket_id: { type: 'string', description: 'Jira ticket ID' } }, required: ['ticket_id'] },
   },
   {
     name: 'search_jira',
-    description: 'Search Jira tickets by keywords using JQL text search. Returns up to 5 matching tickets with summaries and descriptions.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        query: { type: 'string', description: 'Search keywords' },
-        max_results: { type: 'number', description: 'Max results (default 5)' },
-      },
-      required: ['query'],
-    },
+    description: 'Search Jira tickets by keywords. Returns up to 5 matching tickets.',
+    input_schema: { type: 'object', properties: { query: { type: 'string' }, max_results: { type: 'number' } }, required: ['query'] },
   },
   {
     name: 'search_confluence',
-    description: 'Search Confluence pages by keywords using CQL. Returns up to 5 matching pages with titles, spaces, and body content.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        query: { type: 'string', description: 'Search keywords' },
-        max_results: { type: 'number', description: 'Max results (default 5)' },
-      },
-      required: ['query'],
-    },
+    description: 'Search Confluence pages by keywords. Returns up to 5 matching pages with content.',
+    input_schema: { type: 'object', properties: { query: { type: 'string' }, max_results: { type: 'number' } }, required: ['query'] },
   },
   {
     name: 'get_confluence_page',
-    description: 'Fetch a specific Confluence page by its numeric ID. Returns the full page content.',
-    input_schema: {
-      type: 'object',
-      properties: { page_id: { type: 'string', description: 'Confluence page ID (numeric)' } },
-      required: ['page_id'],
-    },
+    description: 'Fetch a specific Confluence page by its numeric ID.',
+    input_schema: { type: 'object', properties: { page_id: { type: 'string' } }, required: ['page_id'] },
   },
 ];
 
-// ─── Tool Handlers ───────────────────────────────────────────────────────────
+// Skill tools — always included
+const SKILL_TOOL_DEFINITIONS = [
+  {
+    name: 'list_skills',
+    description: 'List all available specialist skills for structured deliverables (SDDs, gap analyses, diagrams).',
+    input_schema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'activate_skill',
+    description: 'Activate a specialist skill to get detailed instructions for producing a deliverable. Use for SDDs, gap analyses, or diagrams.',
+    input_schema: { type: 'object', properties: { skill_id: { type: 'string', description: 'e.g. capillary-sdd-writer, solution-gap-analyzer, excalidraw-diagram' } }, required: ['skill_id'] },
+  },
+];
+
+// ─── REST Tool Handlers ──────────────────────────────────────────────────────
 
 async function handleToolCall(name, input) {
   switch (name) {
@@ -133,12 +130,9 @@ async function handleToolCall(name, input) {
       const data = await res.json();
       const f = data.fields;
       return JSON.stringify({
-        id: input.ticket_id,
-        summary: f.summary || '',
-        description: adfToPlainText(f.description),
+        id: input.ticket_id, summary: f.summary || '', description: adfToPlainText(f.description),
         status: f.status?.name, priority: f.priority?.name, type: f.issuetype?.name,
-        labels: f.labels || [],
-        url: `${creds.baseUrl}/browse/${input.ticket_id}`,
+        labels: f.labels || [], url: `${creds.baseUrl}/browse/${input.ticket_id}`,
       }, null, 2);
     }
 
@@ -146,58 +140,81 @@ async function handleToolCall(name, input) {
       const creds = jiraAuth();
       if (!creds) return 'Jira credentials not configured.';
       const limit = input.max_results || 5;
-      const jql = `text ~ "${escapeQuery(input.query)}" ORDER BY updated DESC`;
+      const query = sanitiseQuery(input.query);
+      if (!query) return '[]';
+      const jql = `text ~ "${query}" ORDER BY updated DESC`;
       const params = new URLSearchParams({ jql, maxResults: String(limit), fields: 'summary,status,issuetype,priority,labels,description' });
-      const res = await fetch(`${creds.baseUrl}/rest/api/3/search?${params}`, {
+      let res = await fetch(`${creds.baseUrl}/rest/api/3/search/jql?${params}`, {
         headers: { Authorization: creds.auth, Accept: 'application/json' },
       });
+      if (!res.ok && query.includes(' ')) {
+        const simpler = query.split(' ').slice(0, 3).join(' ');
+        const rp = new URLSearchParams({ jql: `text ~ "${simpler}" ORDER BY updated DESC`, maxResults: String(limit), fields: 'summary,status,issuetype,priority,labels,description' });
+        res = await fetch(`${creds.baseUrl}/rest/api/3/search/jql?${rp}`, { headers: { Authorization: creds.auth, Accept: 'application/json' } });
+      }
       if (!res.ok) return `Jira search failed: ${res.status}`;
       const data = await res.json();
-      const results = (data.issues || []).map(issue => ({
-        id: issue.key,
-        summary: issue.fields.summary || '',
+      return JSON.stringify((data.issues || []).map(issue => ({
+        id: issue.key, summary: issue.fields.summary || '',
         description: adfToPlainText(issue.fields.description).slice(0, 500),
         status: issue.fields.status?.name, type: issue.fields.issuetype?.name,
         url: `${creds.baseUrl}/browse/${issue.key}`,
-      }));
-      return JSON.stringify(results, null, 2);
+      })), null, 2);
     }
 
     case 'search_confluence': {
       const creds = confluenceAuth();
       if (!creds) return 'Confluence credentials not configured.';
       const limit = input.max_results || 5;
-      const cql = `type = page AND text ~ "${escapeQuery(input.query)}"`;
-      const params = new URLSearchParams({ cql, limit: String(limit), expand: 'body.view,space' });
-      const res = await fetch(`${creds.baseUrl}/rest/api/content/search?${params}`, {
-        headers: { Authorization: creds.auth, Accept: 'application/json' },
-      });
+      const query = sanitiseQuery(input.query);
+      if (!query) return '[]';
+      const doSearch = (q) => {
+        const cql = `type = page AND text ~ "${q}"`;
+        const p = new URLSearchParams({ cql, limit: String(limit), expand: 'body.view,space' });
+        return fetch(`${creds.baseUrl}/rest/api/content/search?${p}`, { headers: { Authorization: creds.auth, Accept: 'application/json' } });
+      };
+      let res = await doSearch(query);
+      if (!res.ok) {
+        const body = await res.text().catch(() => '');
+        if (body.includes('Hystrix') || body.includes('circuit')) {
+          await new Promise(r => setTimeout(r, 2000));
+          res = await doSearch(query);
+        }
+      }
+      if (!res.ok && query.includes(' ')) {
+        await new Promise(r => setTimeout(r, 1000));
+        res = await doSearch(query.split(' ').slice(0, 3).join(' '));
+      }
       if (!res.ok) return `Confluence search failed: ${res.status}`;
       const data = await res.json();
-      const results = (data.results || []).map(page => ({
-        id: page.id, title: page.title,
-        space: page.space?.name || page.space?.key || '',
+      return JSON.stringify((data.results || []).map(page => ({
+        id: page.id, title: page.title, space: page.space?.name || page.space?.key || '',
         url: `${creds.baseUrl}${page._links?.webui || `/pages/${page.id}`}`,
         body: htmlToPlainText(page.body?.view?.value || '').slice(0, 2000),
-      }));
-      return JSON.stringify(results, null, 2);
+      })), null, 2);
     }
 
     case 'get_confluence_page': {
       const creds = confluenceAuth();
       if (!creds) return 'Confluence credentials not configured.';
-      const res = await fetch(
-        `${creds.baseUrl}/rest/api/content/${input.page_id}?expand=body.view,space`,
-        { headers: { Authorization: creds.auth, Accept: 'application/json' } }
-      );
-      if (res.status === 404) return `Page ${input.page_id} not found.`;
+      const res = await fetch(`${creds.baseUrl}/rest/api/content/${input.page_id}?expand=body.view,space`,
+        { headers: { Authorization: creds.auth, Accept: 'application/json' } });
       if (!res.ok) return `Confluence API error: ${res.status}`;
       const page = await res.json();
-      return JSON.stringify({
-        id: page.id, title: page.title,
-        space: page.space?.name || '',
-        body: htmlToPlainText(page.body?.view?.value || ''),
-      }, null, 2);
+      return JSON.stringify({ id: page.id, title: page.title, space: page.space?.name || '',
+        body: htmlToPlainText(page.body?.view?.value || '') }, null, 2);
+    }
+
+    case 'list_skills':
+      return JSON.stringify(listSkills(), null, 2);
+
+    case 'activate_skill': {
+      try {
+        const prompt = await loadSkill(input.skill_id);
+        return `Skill "${input.skill_id}" activated. Follow these instructions precisely:\n\n${prompt}`;
+      } catch (err) {
+        return `Failed to load skill: ${err.message}. Use list_skills to see available skills.`;
+      }
     }
 
     default:
@@ -210,38 +227,28 @@ async function handleToolCall(name, input) {
 function inputSummary(name, input) {
   switch (name) {
     case 'get_jira_ticket': return input.ticket_id || '';
-    case 'search_jira': return `"${input.query || ''}"`;
-    case 'search_confluence': return `"${input.query || ''}"`;
+    case 'search_jira': case 'search_confluence': return `"${input.query || ''}"`;
     case 'get_confluence_page': return `page ${input.page_id || ''}`;
-    default: return name;
+    case 'activate_skill': return input.skill_id || '';
+    case 'list_skills': return '';
+    default: return name; // MCP tools — show tool name
   }
 }
 
 function resultSummary(name, result) {
   try {
-    if (result.startsWith('Error:') || result.startsWith('Jira') || result.startsWith('Confluence')) return { text: result };
+    if (typeof result === 'string' && (result.startsWith('Error:') || result.startsWith('Jira') || result.startsWith('Confluence') || result.startsWith('Failed'))) return { text: result };
+    if (name === 'activate_skill') return { text: 'Skill loaded' };
     const parsed = JSON.parse(result);
     switch (name) {
-      case 'get_jira_ticket':
-        return { text: `"${parsed.summary}" (${parsed.status}, ${parsed.priority})`, url: parsed.url };
-      case 'search_jira': {
-        if (!Array.isArray(parsed)) return { text: 'Done' };
-        const links = parsed.map(t => ({ label: t.id, url: t.url }));
-        return { text: `Found ${parsed.length} ticket(s)`, links };
-      }
-      case 'search_confluence': {
-        if (!Array.isArray(parsed)) return { text: 'Done' };
-        const links = parsed.map(p => ({ label: p.title?.slice(0, 40) || p.id, url: p.url }));
-        return { text: `Found ${parsed.length} page(s)`, links };
-      }
-      case 'get_confluence_page':
-        return { text: `"${parsed.title || 'Untitled'}"`, url: parsed.url };
-      default:
-        return { text: 'Done' };
+      case 'get_jira_ticket': return { text: `"${parsed.summary}" (${parsed.status}, ${parsed.priority})`, url: parsed.url };
+      case 'search_jira': return Array.isArray(parsed) ? { text: `Found ${parsed.length} ticket(s)`, links: parsed.map(t => ({ label: t.id, url: t.url })) } : { text: 'Done' };
+      case 'search_confluence': return Array.isArray(parsed) ? { text: `Found ${parsed.length} page(s)`, links: parsed.map(p => ({ label: (p.title || '').slice(0, 40) || p.id, url: p.url })) } : { text: 'Done' };
+      case 'get_confluence_page': return { text: `"${parsed.title || 'Untitled'}"`, url: parsed.url };
+      case 'list_skills': return { text: `${parsed.length} skill(s) available` };
+      default: return { text: 'Done' };
     }
-  } catch {
-    return { text: result.length > 80 ? result.slice(0, 80) + '...' : result };
-  }
+  } catch { return { text: 'Done' }; }
 }
 
 // ─── SDK Client ──────────────────────────────────────────────────────────────
@@ -255,16 +262,11 @@ function getClient() {
 // ─── Friendly Error Messages ─────────────────────────────────────────────────
 
 class AgentError extends Error {
-  constructor(userMessage, technical) {
-    super(userMessage);
-    this.name = 'AgentError';
-    this.technical = technical;
-  }
+  constructor(userMessage, technical) { super(userMessage); this.name = 'AgentError'; this.technical = technical; }
 }
 
 function friendlyError(err) {
-  const msg = err.message || '';
-  const status = err.status || 0;
+  const msg = err.message || ''; const status = err.status || 0;
   if (msg.includes('credit balance is too low')) return new AgentError("The AI's piggy bank is empty. Top up at console.anthropic.com.", msg);
   if (msg.includes('invalid x-api-key') || status === 401) return new AgentError("API key didn't pass the bouncer. Check ANTHROPIC_API_KEY in .env.", msg);
   if (msg.includes('overloaded') || status === 529) return new AgentError("Claude is juggling too many requests. Try again in a moment.", msg);
@@ -290,39 +292,40 @@ You are an autonomous agent with tools. When given a task, DO THE WORK immediate
 
 ## Available tools
 
-You have these tools — USE THEM proactively:
-- **get_jira_ticket** — Fetch a specific Jira ticket by ID (always use this when a ticket ID is mentioned)
-- **search_jira** — Search Jira by keywords to find related tickets
-- **search_confluence** — Search Confluence for past implementations, runbooks, and solution designs
-- **get_confluence_page** — Read a specific Confluence page in full
-- **Capillary docs MCP** — Search Capillary product APIs and documentation (if MCP tools are available)
+You have tools for searching and fetching data — USE THEM proactively:
+- Jira tools: fetch tickets by ID, search by keywords
+- Confluence tools: search pages, fetch page content
+- Capillary docs: search product APIs and documentation
+- Skills: activate specialist skills for SDDs, gap analysis, diagrams
 
 When you receive a request:
 1. First, use tools to gather all relevant data (fetch the ticket, search for related context)
 2. Then synthesise and produce your answer based on what you found
-3. Cite every source: Jira ticket IDs, Confluence page titles, API doc references
+3. Cite every source with clickable links
 
-## What you do
+## Skills — specialist deliverables
 
-1. Analyse problems using data from Jira, Confluence, Capillary docs, and user-attached files
-2. Identify the solution approach: product configuration, integration pattern, API usage, or custom build
-3. Produce structured, actionable output — concrete recommendations with evidence, not a menu of options
-4. If a skill is active (SDD writer, gap analyzer, etc.), follow its instructions to produce the deliverable
+You have access to specialist skills for structured deliverables:
+- **capillary-sdd-writer** — System Design Documents / LLDs / technical specs
+- **solution-gap-analyzer** — BRD gap analysis with Capillary capability matching
+- **excalidraw-diagram** — Architecture and workflow diagrams
+
+When the task requires a structured deliverable, use **activate_skill** to load instructions. Activate proactively — if a ticket is about building something, activate the SDD writer. If evaluating requirements, activate the gap analyzer.
 
 ## Output format
 
-- Brief summary of what you understood (1–2 lines max)
+- Brief summary of what you understood (1-2 lines max)
 - Markdown: headers, bullet points, code blocks, tables
-- Technical and specific — your audience is CS engineers and SAs
-- Every claim backed by a cited source
+- Technical and specific — audience is CS engineers and SAs
+- **Citations must be clickable markdown links**: use [TICKET-ID](url) for Jira and [Page Title](url) for Confluence. Always include the URL from tool results.
 - If not found in any source, say "not found in [source searched]"
 
 ## What NOT to do
 
 - Do NOT ask "What would you like me to do?" — the user already told you
-- Do NOT list capabilities ("I can do X, Y, Z") — just do the relevant one
+- Do NOT list capabilities — just do the relevant one
 - Do NOT say "I don't have access to..." — you have tools, use them
-- Do NOT narrate tool calls ("Let me search...", "I'll look up...") — just use the tools silently
+- Do NOT narrate tool calls — just use the tools silently
 - Do NOT make assumptions — every claim must trace to a source
 `.trim();
 
@@ -330,34 +333,45 @@ When you receive a request:
 
 export { AgentError };
 
-export async function runAgent({ problemText, history, onStatus, onToken, onToolStatus }) {
+export async function runAgent({ problemText, history, onStatus, onToken, onToolStatus, onSkillActive }) {
   if (!process.env.ANTHROPIC_API_KEY) {
     throw new AgentError("No API key found. Add ANTHROPIC_API_KEY to .env.", 'ANTHROPIC_API_KEY not set');
   }
 
   const anthropic = getClient();
 
-  // Step 1: Load skills
+  // Step 1: Load skills (keyword-based fast path)
   await onStatus('🔍 Analysing request...');
-  const { skillIds, prompt: skillPrompt } = await loadSkillsForProblem(problemText);
-  if (skillIds.length) await onStatus(`🧩 Loading skills: ${skillIds.join(', ')}...`);
+  const { skillIds, prompt: skillPrompt, matched } = await loadSkillsForProblem(problemText);
+  if (skillIds.length) {
+    await onStatus(`🧩 Loading skills: ${skillIds.join(', ')}...`);
+    if (onSkillActive) {
+      for (const skill of matched) await onSkillActive({ id: skill.id, description: skill.description });
+    }
+  }
 
   // Step 2: Assemble system prompt
   const systemPrompt = BASE_SYSTEM_PROMPT + skillPrompt;
 
-  // Step 3: Build tools array (Jira/Confluence tools + MCP toolsets)
+  // Step 3: Build tools — MCP toolsets + conditional REST or skill-only tools
   const mcpServers = getMcpServers();
-  const tools = [...TOOL_DEFINITIONS];
+  const hasAtlassianMcp = mcpServers.some(s => s.name === 'atlassian');
+
+  const tools = [...SKILL_TOOL_DEFINITIONS];
+  if (!hasAtlassianMcp) {
+    // No Atlassian MCP — include REST API fallback tools
+    tools.push(...REST_TOOL_DEFINITIONS);
+  }
   if (mcpServers.length) {
     tools.push(...mcpServers.map(s => ({ type: 'mcp_toolset', mcp_server_name: s.name })));
   }
 
   const maxTokens = parseInt(process.env.MAX_AGENT_TOKENS || '8000', 10);
 
-  // Step 4: Agentic loop — Claude calls tools, we execute them, repeat until done
+  // Step 4: Agentic loop
   let messages = [...history];
   let fullText = '';
-  const MAX_TURNS = 15; // safety limit
+  const MAX_TURNS = 15;
 
   try {
     for (let turn = 0; turn < MAX_TURNS; turn++) {
@@ -379,20 +393,20 @@ export async function runAgent({ problemText, history, onStatus, onToken, onTool
       // Stream the response
       const contentBlocks = [];
       let currentBlock = null;
+      let stopReason = null;
 
       const stream = await anthropic.beta.messages.stream(params, {
         headers: mcpServers.length ? { 'anthropic-beta': 'mcp-client-2025-11-20' } : {},
       });
 
-      let stopReason = null;
-
       for await (const event of stream) {
-        if (event.type === 'message_start') {
-          // nothing
-        } else if (event.type === 'content_block_start') {
-          currentBlock = { ...event.content_block, _text: '' };
-          if (currentBlock.type === 'tool_use') {
-            currentBlock._inputJson = '';
+        if (event.type === 'content_block_start') {
+          currentBlock = { ...event.content_block, _text: '', _inputJson: '' };
+          // Emit tool_status for ALL tool calls (MCP + REST)
+          if (currentBlock.type === 'tool_use' && onToolStatus) {
+            const toolId = `${currentBlock.name}-${currentBlock.id}`;
+            currentBlock._toolId = toolId;
+            await onToolStatus({ id: toolId, name: currentBlock.name, inputSummary: '', status: 'running' });
           }
         } else if (event.type === 'content_block_delta') {
           if (event.delta?.type === 'text_delta' && currentBlock?.type === 'text') {
@@ -403,14 +417,17 @@ export async function runAgent({ problemText, history, onStatus, onToken, onTool
             currentBlock._inputJson += event.delta.partial_json;
           }
         } else if (event.type === 'content_block_stop') {
-          if (currentBlock) {
-            if (currentBlock.type === 'tool_use') {
-              let input = {};
-              try { input = JSON.parse(currentBlock._inputJson || '{}'); } catch {}
-              contentBlocks.push({ type: 'tool_use', id: currentBlock.id, name: currentBlock.name, input });
-            } else if (currentBlock.type === 'text') {
-              contentBlocks.push({ type: 'text', text: currentBlock._text });
+          if (currentBlock?.type === 'tool_use') {
+            let input = {};
+            try { input = JSON.parse(currentBlock._inputJson || '{}'); } catch {}
+            contentBlocks.push({ type: 'tool_use', id: currentBlock.id, name: currentBlock.name, input, _toolId: currentBlock._toolId });
+            // Update tool_status with parsed input summary (now we have the full input)
+            if (onToolStatus) {
+              const summary = inputSummary(currentBlock.name, input);
+              await onToolStatus({ id: currentBlock._toolId, name: currentBlock.name, inputSummary: summary, status: 'running' });
             }
+          } else if (currentBlock?.type === 'text') {
+            contentBlocks.push({ type: 'text', text: currentBlock._text });
           }
           currentBlock = null;
         } else if (event.type === 'message_delta') {
@@ -418,60 +435,63 @@ export async function runAgent({ problemText, history, onStatus, onToken, onTool
         }
       }
 
-      // Add assistant response to messages
       messages.push({ role: 'assistant', content: contentBlocks });
 
-      // If Claude stopped because it wants to use tools, execute them and loop
       if (stopReason === 'tool_use') {
         const toolResults = [];
         for (const block of contentBlocks) {
           if (block.type !== 'tool_use') continue;
-          const summary = inputSummary(block.name, block.input);
-          const toolId = `${block.name}-${block.id}`;
-
-          // Notify: tool running
-          if (onToolStatus) await onToolStatus({ id: toolId, name: block.name, inputSummary: summary, status: 'running' });
 
           try {
             const result = await handleToolCall(block.name, block.input);
             toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: result });
-            // Notify: tool done
+            // Skill activation event
+            if (block.name === 'activate_skill' && onSkillActive) {
+              const skillInfo = listSkills().find(s => s.id === block.input.skill_id);
+              await onSkillActive({ id: block.input.skill_id, description: skillInfo?.description || '' });
+            }
             const rs = resultSummary(block.name, result);
-            if (onToolStatus) await onToolStatus({ id: toolId, name: block.name, inputSummary: summary, status: 'done', ...rs });
+            if (onToolStatus) await onToolStatus({ id: block._toolId, name: block.name, inputSummary: inputSummary(block.name, block.input), status: 'done', ...rs });
           } catch (err) {
             toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: `Error: ${err.message}`, is_error: true });
-            if (onToolStatus) await onToolStatus({ id: toolId, name: block.name, inputSummary: summary, status: 'error', text: err.message });
+            if (onToolStatus) await onToolStatus({ id: block._toolId, name: block.name, inputSummary: inputSummary(block.name, block.input), status: 'error', text: err.message });
           }
         }
         messages.push({ role: 'user', content: toolResults });
         continue;
       }
 
-      // Claude is done (stop_reason: 'end_turn' or 'max_tokens')
-      break;
+      // MCP tool calls are handled internally by Anthropic — they appear as tool_use + tool_result
+      // in the stream but we don't execute them ourselves. Mark them as done.
+      for (const block of contentBlocks) {
+        if (block.type === 'tool_use' && block._toolId && onToolStatus) {
+          // If we didn't handle it above (i.e. it's an MCP tool), mark it done
+          const isCustomTool = ['get_jira_ticket', 'search_jira', 'search_confluence', 'get_confluence_page', 'list_skills', 'activate_skill'].includes(block.name);
+          if (!isCustomTool) {
+            await onToolStatus({ id: block._toolId, name: block.name, inputSummary: inputSummary(block.name, block.input), status: 'done', text: 'Done' });
+          }
+        }
+      }
+
+      break; // end_turn or max_tokens
     }
   } catch (err) {
     if (err instanceof Anthropic.APIError) throw friendlyError(err);
     throw new AgentError(`Something went wrong: ${err.message}`, err.message);
   }
 
-  // Step 5: Detect escalation
   const escalationPhrases = ['escalate', 'human sa', 'cannot determine', 'insufficient information', 'need more context from sa'];
   const shouldEscalate = escalationPhrases.some(p => fullText.toLowerCase().includes(p));
 
   return { text: fullText, skillsUsed: skillIds, shouldEscalate };
 }
 
-/**
- * Builds a concise SA escalation summary.
- */
 export async function buildEscalationSummary({ problemText, history, agentResponse }) {
   try {
     const anthropic = getClient();
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 1000,
-      messages: [{ role: 'user', content: `Summarise this CS escalation for the SA team in under 400 words. Include: problem statement, what was researched, why SA is needed, suggested next steps. Be concise.\n\nProblem: ${problemText}\nAgent response: ${agentResponse}\nTurns: ${history.length}` }],
+      model: 'claude-sonnet-4-20250514', max_tokens: 1000,
+      messages: [{ role: 'user', content: `Summarise this CS escalation for the SA team in under 400 words. Include: problem statement, what was researched, why SA is needed, suggested next steps.\n\nProblem: ${problemText}\nAgent response: ${agentResponse}\nTurns: ${history.length}` }],
     });
     return response.content.filter(b => b.type === 'text').map(b => b.text).join('\n');
   } catch {

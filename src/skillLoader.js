@@ -117,7 +117,7 @@ export async function loadSkillsForProblem(problemText) {
   const matched = detectSkills(problemText);
 
   if (!matched.length) {
-    return { skillIds: [], prompt: '' };
+    return { skillIds: [], prompt: '', matched: [] };
   }
 
   const loaded = await Promise.all(matched.map(s => loadSkill(s.id)));
@@ -125,6 +125,7 @@ export async function loadSkillsForProblem(problemText) {
   return {
     skillIds: matched.map(s => s.id),
     prompt: '\n\n' + loaded.join('\n\n════════════════════════════════════════\n\n'),
+    matched,
   };
 }
 

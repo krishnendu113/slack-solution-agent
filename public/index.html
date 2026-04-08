@@ -95,6 +95,19 @@
     .skill-badge { font-size: 11px; padding: 3px 8px; border-radius: 12px; background: rgba(59, 130, 246, 0.15); color: var(--accent); font-weight: 500; }
     .escalation-banner { margin-top: 8px; padding: 8px 12px; background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 8px; color: var(--warning); font-size: 13px; }
 
+    /* Skill active banner */
+    .skill-banner { display: flex; align-items: center; gap: 8px; padding: 8px 14px; margin-bottom: 10px; background: rgba(139, 92, 246, 0.1); border: 1px solid rgba(139, 92, 246, 0.25); border-radius: 8px; font-size: 12px; color: #c4b5fd; }
+    .skill-banner-icon { font-size: 14px; }
+    .skill-banner-name { font-weight: 600; color: #ddd6fe; }
+    .skill-banner-desc { color: #a78bfa; }
+
+    /* Collapsible long messages */
+    .message-bubble.collapsed { max-height: 400px; overflow: hidden; position: relative; }
+    .message-bubble.collapsed::after { content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 80px; background: linear-gradient(transparent, var(--bg-assistant-msg)); pointer-events: none; }
+    .message.user .message-bubble.collapsed::after { background: linear-gradient(transparent, var(--bg-user-msg)); }
+    .expand-toggle { display: inline-block; margin-top: 6px; font-size: 12px; color: var(--accent); cursor: pointer; border: none; background: none; font-family: inherit; padding: 0; }
+    .expand-toggle:hover { text-decoration: underline; }
+
     /* Thinking indicator */
     .thinking { display: flex; align-items: center; gap: 10px; padding: 14px 18px; background: var(--bg-assistant-msg); border: 1px solid var(--border); border-radius: var(--radius); font-size: 14px; color: var(--text-secondary); }
     .thinking-dots { display: flex; gap: 4px; }
@@ -115,6 +128,22 @@
     .tool-result { color: var(--text-muted); margin-left: 4px; }
     .tool-result a { color: var(--accent); text-decoration: none; }
     .tool-result a:hover { text-decoration: underline; }
+
+    /* Collapsible tool group */
+    .tool-group-header { cursor: pointer; font-size: 12px; color: var(--text-muted); padding: 6px 0; user-select: none; display: flex; align-items: center; gap: 6px; }
+    .tool-group-header:hover { color: var(--text-secondary); }
+    .tool-group-header .arrow { transition: transform 0.15s; display: inline-block; }
+    .tool-group-header.collapsed .arrow { transform: rotate(-90deg); }
+    .tool-group-body { transition: max-height 0.2s ease; overflow: hidden; }
+    .tool-group-body.collapsed { max-height: 0 !important; }
+
+    /* Activity pulse bar */
+    .activity-bar { height: 3px; border-radius: 2px; margin: 10px 0 4px; background: linear-gradient(90deg, transparent, var(--accent), transparent); background-size: 200% 100%; animation: shimmer 1.5s ease-in-out infinite; }
+    @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+    /* Inline between-turn status */
+    .inline-status { font-size: 12px; color: var(--text-muted); padding: 6px 0; display: flex; align-items: center; gap: 8px; }
+    .inline-status .tool-spinner { width: 10px; height: 10px; }
 
     /* Code block download bar */
     .code-block-wrapper { position: relative; margin: 12px 0; }
@@ -274,8 +303,8 @@ function renderMessages(messages) {
     return;
   }
   $inner.innerHTML = messages.map(m => renderMessage(m)).join('');
-  // Post-process code blocks for download buttons
   $inner.querySelectorAll('.message.assistant .message-bubble').forEach(postProcessCodeBlocks);
+  applyCollapsible($inner);
   scrollToBottom();
 }
 
@@ -287,8 +316,10 @@ function renderMessage(msg) {
     html += `<div class="message-bubble">${escapeHtml(msg.content)}</div>`;
     if (msg.files?.length) html += `<div class="file-badges">${msg.files.map(f => `<span class="file-badge">${escapeHtml(f)}</span>`).join('')}</div>`;
   } else {
+    if (msg.skillsUsed?.length) {
+      html += msg.skillsUsed.map(s => `<div class="skill-banner"><span class="skill-banner-icon">🧩</span><span class="skill-banner-name">${escapeHtml(s)}</span></div>`).join('');
+    }
     html += `<div class="message-bubble">${marked.parse(msg.content || '')}</div>`;
-    if (msg.skillsUsed?.length) html += `<div class="skill-badges">${msg.skillsUsed.map(s => `<span class="skill-badge">${escapeHtml(s)}</span>`).join('')}</div>`;
     if (msg.escalated) html += `<div class="escalation-banner">This query has been flagged for SA review.</div>`;
   }
   html += '</div>';
@@ -348,14 +379,16 @@ async function sendMessage() {
     const decoder = new TextDecoder();
     let buffer = '';
 
-    // Streaming state
+    // Streaming state — elements are appended sequentially as events arrive
     let streamingBubble = null;
     let streamingMsgDiv = null;
-    let toolIndicatorsEl = null;
+    let currentToolGroup = null;
+    let activityBar = null;
+    let inlineStatusEl = null;
     let accumulatedText = '';
     let renderTimeout = null;
+    let lastBlockType = null;
 
-    // Helper: ensure the assistant message container + tool indicators exist
     function ensureMsgContainer() {
       if (streamingMsgDiv) return;
       thinkingEl.remove();
@@ -363,29 +396,80 @@ async function sendMessage() {
       streamingMsgDiv.className = 'message assistant';
       streamingMsgDiv.innerHTML = '<div class="message-role">Agent</div>';
       $inner.appendChild(streamingMsgDiv);
+      // Add activity bar
+      activityBar = document.createElement('div');
+      activityBar.className = 'activity-bar';
+      streamingMsgDiv.appendChild(activityBar);
     }
 
-    function ensureToolIndicators() {
-      if (toolIndicatorsEl) return;
+    function removeActivityBar() {
+      if (activityBar) { activityBar.remove(); activityBar = null; }
+    }
+
+    function showInlineStatus(text) {
       ensureMsgContainer();
-      toolIndicatorsEl = document.createElement('div');
-      toolIndicatorsEl.className = 'tool-indicators';
-      // Always insert before the bubble (if it exists), so indicators stay on top
-      if (streamingBubble) {
-        streamingMsgDiv.insertBefore(toolIndicatorsEl, streamingBubble);
-      } else {
-        streamingMsgDiv.appendChild(toolIndicatorsEl);
+      if (!inlineStatusEl) {
+        inlineStatusEl = document.createElement('div');
+        inlineStatusEl.className = 'inline-status';
+        // Insert before activity bar
+        if (activityBar) streamingMsgDiv.insertBefore(inlineStatusEl, activityBar);
+        else streamingMsgDiv.appendChild(inlineStatusEl);
       }
+      inlineStatusEl.innerHTML = '<span class="tool-spinner"></span>' + escapeHtml(text);
+      scrollToBottom();
     }
 
-    function ensureStreamingBubble() {
-      if (streamingBubble) return;
-      ensureMsgContainer();
-      const bubble = document.createElement('div');
-      bubble.className = 'message-bubble';
-      // Always append bubble at the end (after indicators)
-      streamingMsgDiv.appendChild(bubble);
-      streamingBubble = bubble;
+    function removeInlineStatus() {
+      if (inlineStatusEl) { inlineStatusEl.remove(); inlineStatusEl = null; }
+    }
+
+    function getToolGroup() {
+      if (lastBlockType === 'text' || !currentToolGroup) {
+        ensureMsgContainer();
+        removeInlineStatus();
+        currentToolGroup = document.createElement('div');
+        currentToolGroup.className = 'tool-indicators';
+        // Insert before activity bar
+        if (activityBar) streamingMsgDiv.insertBefore(currentToolGroup, activityBar);
+        else streamingMsgDiv.appendChild(currentToolGroup);
+        lastBlockType = 'tool';
+      }
+      return currentToolGroup;
+    }
+
+    function collapseToolGroup(group) {
+      if (!group || group.querySelector('.tool-group-header')) return; // already collapsed
+      const pills = [...group.children];
+      if (!pills.length) return;
+      const count = pills.length;
+      const header = document.createElement('div');
+      header.className = 'tool-group-header collapsed';
+      header.innerHTML = '<span class="arrow">▾</span> <span class="tool-group-summary">' + count + ' lookup(s) completed</span>';
+      const body = document.createElement('div');
+      body.className = 'tool-group-body collapsed';
+      pills.forEach(p => body.appendChild(p));
+      body.style.maxHeight = body.scrollHeight + 'px';
+      group.appendChild(header);
+      group.appendChild(body);
+      header.onclick = () => {
+        header.classList.toggle('collapsed');
+        body.classList.toggle('collapsed');
+      };
+    }
+
+    function getStreamingBubble() {
+      if (lastBlockType === 'tool' || !streamingBubble) {
+        ensureMsgContainer();
+        removeInlineStatus();
+        // Collapse the previous tool group
+        if (currentToolGroup) collapseToolGroup(currentToolGroup);
+        streamingBubble = document.createElement('div');
+        streamingBubble.className = 'message-bubble';
+        if (activityBar) streamingMsgDiv.insertBefore(streamingBubble, activityBar);
+        else streamingMsgDiv.appendChild(streamingBubble);
+        lastBlockType = 'text';
+      }
+      return streamingBubble;
     }
 
     while (true) {
@@ -405,17 +489,29 @@ async function sendMessage() {
 
           if (eventType === 'status') {
             const thinkText = thinkingEl.querySelector('.thinking-text');
-            if (thinkText) thinkText.textContent = data.text;
+            if (thinkText) {
+              thinkText.textContent = data.text;
+            } else if (streamingMsgDiv) {
+              // Thinking bubble is gone — show inline status
+              showInlineStatus(data.text);
+            }
+          } else if (eventType === 'skill_active') {
+            ensureMsgContainer();
+            const banner = document.createElement('div');
+            banner.className = 'skill-banner';
+            banner.innerHTML = `<span class="skill-banner-icon">🧩</span><span class="skill-banner-name">${escapeHtml(data.id)}</span><span class="skill-banner-desc">${escapeHtml(data.description)}</span>`;
+            streamingMsgDiv.appendChild(banner);
+            scrollToBottom();
           } else if (eventType === 'tool_status') {
-            ensureToolIndicators();
-            const toolEl = toolIndicatorsEl.querySelector(`[data-tool-id="${data.id}"]`);
+            const group = getToolGroup();
+            const toolEl = group.querySelector(`[data-tool-id="${data.id}"]`);
             if (data.status === 'running') {
               const label = toolDisplayLabel(data.name, data.inputSummary, 'running');
               const pill = document.createElement('div');
               pill.className = 'tool-indicator running';
               pill.dataset.toolId = data.id;
               pill.innerHTML = `<span class="tool-icon"><span class="tool-spinner"></span></span><span class="tool-label">${escapeHtml(label)}</span>`;
-              toolIndicatorsEl.appendChild(pill);
+              group.appendChild(pill);
               scrollToBottom();
             } else if (toolEl) {
               const isDone = data.status === 'done';
@@ -439,7 +535,7 @@ async function sendMessage() {
               scrollToBottom();
             }
           } else if (eventType === 'token') {
-            ensureStreamingBubble();
+            getStreamingBubble();
             accumulatedText += data.text;
             if (!renderTimeout) {
               renderTimeout = setTimeout(() => {
@@ -451,11 +547,14 @@ async function sendMessage() {
           } else if (eventType === 'message') {
             if (renderTimeout) { clearTimeout(renderTimeout); renderTimeout = null; }
             thinkingEl.remove();
+            removeInlineStatus();
+            removeActivityBar();
+            if (currentToolGroup) collapseToolGroup(currentToolGroup);
             if (streamingMsgDiv) {
-              ensureStreamingBubble();
-              streamingBubble.innerHTML = marked.parse(data.content || accumulatedText);
-              postProcessCodeBlocks(streamingBubble);
-              if (data.skillsUsed?.length) streamingMsgDiv.insertAdjacentHTML('beforeend', `<div class="skill-badges">${data.skillsUsed.map(s => `<span class="skill-badge">${escapeHtml(s)}</span>`).join('')}</div>`);
+              const bubble = getStreamingBubble();
+              bubble.innerHTML = marked.parse(data.content || accumulatedText);
+              postProcessCodeBlocks(bubble);
+              applyCollapsible(streamingMsgDiv);
               if (data.escalated) streamingMsgDiv.insertAdjacentHTML('beforeend', '<div class="escalation-banner">This query has been flagged for SA review.</div>');
             } else {
               appendMessageToUI(data);
@@ -463,6 +562,8 @@ async function sendMessage() {
           } else if (eventType === 'error') {
             if (renderTimeout) { clearTimeout(renderTimeout); renderTimeout = null; }
             thinkingEl.remove();
+            removeActivityBar();
+            removeInlineStatus();
             if (streamingBubble) {
               streamingBubble.innerHTML += `<div style="color:#fca5a5;margin-top:12px">${escapeHtml(data.text)}</div>`;
             } else {
@@ -476,6 +577,9 @@ async function sendMessage() {
 
     // Cleanup
     if (renderTimeout) { clearTimeout(renderTimeout); renderTimeout = null; }
+    removeActivityBar();
+    removeInlineStatus();
+    if (currentToolGroup) collapseToolGroup(currentToolGroup);
     if (streamingBubble && accumulatedText) {
       streamingBubble.innerHTML = marked.parse(accumulatedText);
       postProcessCodeBlocks(streamingBubble);
@@ -492,6 +596,30 @@ async function sendMessage() {
     $sendBtn.disabled = false;
     $input.focus();
   }
+}
+
+// ─── Collapsible long messages ────────────────────────────────────────────────
+const COLLAPSE_THRESHOLD = 500; // px
+
+function applyCollapsible(container) {
+  container.querySelectorAll('.message .message-bubble').forEach(bubble => {
+    if (bubble.dataset.collapsible) return; // already processed
+    bubble.dataset.collapsible = '1';
+    // Wait a frame for layout to settle
+    requestAnimationFrame(() => {
+      if (bubble.scrollHeight > COLLAPSE_THRESHOLD) {
+        bubble.classList.add('collapsed');
+        const toggle = document.createElement('button');
+        toggle.className = 'expand-toggle';
+        toggle.textContent = 'Show more';
+        toggle.onclick = () => {
+          const isCollapsed = bubble.classList.toggle('collapsed');
+          toggle.textContent = isCollapsed ? 'Show more' : 'Show less';
+        };
+        bubble.parentElement.insertBefore(toggle, bubble.nextSibling);
+      }
+    });
+  });
 }
 
 // ─── Tool display labels ─────────────────────────────────────────────────────
