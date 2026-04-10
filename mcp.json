@@ -1,23 +1,4 @@
 {
-  "_comment": "MCP server config. URLs and tokens come from .env — never hardcode secrets here.",
-  "servers": [
-    {
-      "name": "atlassian",
-      "urlEnvVar": "ATLASSIAN_MCP_URL",
-      "tokenEnvVar": "ATLASSIAN_MCP_TOKEN",
-      "description": "Jira + Confluence (Atlassian MCP)"
-    },
-    {
-      "name": "capillary-docs",
-      "urlEnvVar": "CAPILLARY_DOCS_MCP_URL",
-      "tokenEnvVar": "CAPILLARY_DOCS_MCP_TOKEN",
-      "description": "Capillary documentation via Kapa AI"
-    },
-    {
-      "name": "capillary-api-docs",
-      "urlEnvVar": "CAPILLARY_API_DOCS_MCP_URL",
-      "tokenEnvVar": null,
-      "description": "Capillary product API specs and documentation"
-    }
-  ]
+  "_comment": "MCP server config. Currently disabled — using REST API for Jira/Confluence.",
+  "servers": []
 }

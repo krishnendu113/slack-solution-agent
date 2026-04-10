@@ -9,7 +9,6 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
-import { getMcpServers } from './mcpConfig.js';
 import { loadSkillsForProblem, loadSkill, listSkills } from './skillLoader.js';
 
 // ─── REST API fallback helpers (used only when Atlassian MCP is not configured) ─
@@ -353,19 +352,8 @@ export async function runAgent({ problemText, history, onStatus, onToken, onTool
   // Step 2: Assemble system prompt
   const systemPrompt = BASE_SYSTEM_PROMPT + skillPrompt;
 
-  // Step 3: Build tools — always include REST tools + MCP toolsets if configured
-  const mcpServers = getMcpServers();
-  const hasJiraRest = !!(process.env.JIRA_BASE_URL && process.env.JIRA_EMAIL && process.env.JIRA_API_TOKEN);
-
-  const tools = [...SKILL_TOOL_DEFINITIONS];
-  // Always include REST tools if credentials are available (reliable fallback)
-  if (hasJiraRest) {
-    tools.push(...REST_TOOL_DEFINITIONS);
-  }
-  // Also include MCP toolsets (Atlassian, Capillary docs) if configured
-  if (mcpServers.length) {
-    tools.push(...mcpServers.map(s => ({ type: 'mcp_toolset', mcp_server_name: s.name })));
-  }
+  // Step 3: Build tools — REST tools + skills
+  const tools = [...SKILL_TOOL_DEFINITIONS, ...REST_TOOL_DEFINITIONS];
 
   const maxTokens = parseInt(process.env.MAX_AGENT_TOKENS || '8000', 10);
 
@@ -387,20 +375,13 @@ export async function runAgent({ problemText, history, onStatus, onToken, onTool
         stream: true,
       };
 
-      if (mcpServers.length) {
-        params.mcp_servers = mcpServers;
-      }
-
-      // Stream the response
       const contentBlocks = [];
       let currentBlock = null;
       let stopReason = null;
 
-      console.log(`[orchestrator] Turn ${turn + 1}, tools: ${tools.map(t => t.name || t.mcp_server_name || '?').join(', ')}, mcpServers: ${mcpServers.map(s => s.name).join(', ') || 'none'}`);
+      console.log(`[orchestrator] Turn ${turn + 1}, tools: ${tools.map(t => t.name).join(', ')}`);
 
-      const stream = await anthropic.beta.messages.stream(params, {
-        headers: mcpServers.length ? { 'anthropic-beta': 'mcp-client-2025-11-20' } : {},
-      });
+      const stream = anthropic.messages.stream(params);
 
       for await (const event of stream) {
         if (event.type === 'content_block_start') {
@@ -469,18 +450,6 @@ export async function runAgent({ problemText, history, onStatus, onToken, onTool
         }
         messages.push({ role: 'user', content: toolResults });
         continue;
-      }
-
-      // MCP tool calls are handled internally by Anthropic — they appear as tool_use + tool_result
-      // in the stream but we don't execute them ourselves. Mark them as done.
-      for (const block of contentBlocks) {
-        if (block.type === 'tool_use' && block._toolId && onToolStatus) {
-          // If we didn't handle it above (i.e. it's an MCP tool), mark it done
-          const isCustomTool = ['get_jira_ticket', 'search_jira', 'search_confluence', 'get_confluence_page', 'list_skills', 'activate_skill'].includes(block.name);
-          if (!isCustomTool) {
-            await onToolStatus({ id: block._toolId, name: block.name, inputSummary: inputSummary(block.name, block.input), status: 'done', text: 'Done' });
-          }
-        }
       }
 
       break; // end_turn or max_tokens

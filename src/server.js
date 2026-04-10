@@ -10,7 +10,6 @@ import express from 'express';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import path from 'path';
-import { logMcpStatus } from './mcpConfig.js';
 import { runAgent, buildEscalationSummary, AgentError } from './orchestrator.js';
 import { upload, extractFileContent, buildAnthropicContent } from './fileHandler.js';
 import * as store from './store.js';
@@ -210,20 +209,10 @@ const PORT = process.env.PORT || 3000;
 (async () => {
   await store.init();
   app.listen(PORT, () => {
-    console.log(`\n✅ Capillary Solution Agent running at http://localhost:${PORT}`);
-    logMcpStatus();
-
-    // Log data access mode
-    const hasAtlassianMcp = !!process.env.ATLASSIAN_MCP_URL;
-    const hasJiraRest = !!(process.env.JIRA_BASE_URL && process.env.JIRA_EMAIL && process.env.JIRA_API_TOKEN);
-    console.log('── Data Access ─────────────────────────────');
-    if (hasAtlassianMcp) {
-      console.log('  ✓ Atlassian MCP     Jira + Confluence via MCP (preferred)');
-    } else if (hasJiraRest) {
-      console.log('  ✓ Jira/Confluence   REST API fallback (set ATLASSIAN_MCP_URL for MCP)');
-    } else {
-      console.log('  ✗ Jira/Confluence   Not configured');
-    }
-    console.log('────────────────────────────────────────────\n');
+    console.log(`\n✅ Solution Agent running at http://localhost:${PORT}`);
+    const jiraOk = !!(process.env.JIRA_BASE_URL && process.env.JIRA_EMAIL && process.env.JIRA_API_TOKEN);
+    const confOk = !!(process.env.CONFLUENCE_BASE_URL && process.env.JIRA_EMAIL && process.env.CONFLUENCE_API_TOKEN);
+    console.log(`  ${jiraOk ? '✓' : '✗'} Jira     ${confOk ? '✓' : '✗'} Confluence`);
+    console.log('');
   });
 })();
