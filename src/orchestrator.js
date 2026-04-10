@@ -353,15 +353,16 @@ export async function runAgent({ problemText, history, onStatus, onToken, onTool
   // Step 2: Assemble system prompt
   const systemPrompt = BASE_SYSTEM_PROMPT + skillPrompt;
 
-  // Step 3: Build tools — MCP toolsets + conditional REST or skill-only tools
+  // Step 3: Build tools — always include REST tools + MCP toolsets if configured
   const mcpServers = getMcpServers();
-  const hasAtlassianMcp = mcpServers.some(s => s.name === 'atlassian');
+  const hasJiraRest = !!(process.env.JIRA_BASE_URL && process.env.JIRA_EMAIL && process.env.JIRA_API_TOKEN);
 
   const tools = [...SKILL_TOOL_DEFINITIONS];
-  if (!hasAtlassianMcp) {
-    // No Atlassian MCP — include REST API fallback tools
+  // Always include REST tools if credentials are available (reliable fallback)
+  if (hasJiraRest) {
     tools.push(...REST_TOOL_DEFINITIONS);
   }
+  // Also include MCP toolsets (Atlassian, Capillary docs) if configured
   if (mcpServers.length) {
     tools.push(...mcpServers.map(s => ({ type: 'mcp_toolset', mcp_server_name: s.name })));
   }
