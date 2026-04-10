@@ -505,28 +505,33 @@ async function sendMessage() {
             scrollToBottom();
           } else if (eventType === 'tool_status') {
             const group = getToolGroup();
-            const toolEl = group.querySelector(`[data-tool-id="${data.id}"]`);
+            let toolEl = group.querySelector(`[data-tool-id="${data.id}"]`);
+
             if (data.status === 'running') {
               const label = toolDisplayLabel(data.name, data.inputSummary, 'running');
-              const pill = document.createElement('div');
-              pill.className = 'tool-indicator running';
-              pill.dataset.toolId = data.id;
-              pill.innerHTML = `<span class="tool-icon"><span class="tool-spinner"></span></span><span class="tool-label">${escapeHtml(label)}</span>`;
-              group.appendChild(pill);
+              if (toolEl) {
+                // Update existing pill (e.g. input summary now available)
+                toolEl.querySelector('.tool-label').textContent = label;
+              } else {
+                // Create new pill
+                toolEl = document.createElement('div');
+                toolEl.className = 'tool-indicator running';
+                toolEl.dataset.toolId = data.id;
+                toolEl.innerHTML = `<span class="tool-icon"><span class="tool-spinner"></span></span><span class="tool-label">${escapeHtml(label)}</span>`;
+                group.appendChild(toolEl);
+              }
               scrollToBottom();
             } else if (toolEl) {
+              // Done or error — update the same pill in place
               const isDone = data.status === 'done';
               toolEl.className = `tool-indicator ${isDone ? 'done' : 'error'}`;
               const icon = isDone ? '✓' : '✗';
               const label = toolDisplayLabel(data.name, data.inputSummary, data.status);
-              // Build result with clickable links
               let resultHtml = '';
               if (data.text) {
-                if (data.url) {
-                  resultHtml = ` — <a href="${escapeHtml(data.url)}" target="_blank" rel="noopener">${escapeHtml(data.text)}</a>`;
-                } else {
-                  resultHtml = ` — ${escapeHtml(data.text)}`;
-                }
+                resultHtml = data.url
+                  ? ` — <a href="${escapeHtml(data.url)}" target="_blank" rel="noopener">${escapeHtml(data.text)}</a>`
+                  : ` — ${escapeHtml(data.text)}`;
               }
               if (data.links?.length) {
                 const linkHtml = data.links.map(l => `<a href="${escapeHtml(l.url)}" target="_blank" rel="noopener">${escapeHtml(l.label)}</a>`).join(', ');
