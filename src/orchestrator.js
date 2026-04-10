@@ -395,6 +395,8 @@ export async function runAgent({ problemText, history, onStatus, onToken, onTool
       let currentBlock = null;
       let stopReason = null;
 
+      console.log(`[orchestrator] Turn ${turn + 1}, tools: ${tools.map(t => t.name || t.mcp_server_name || '?').join(', ')}, mcpServers: ${mcpServers.map(s => s.name).join(', ') || 'none'}`);
+
       const stream = await anthropic.beta.messages.stream(params, {
         headers: mcpServers.length ? { 'anthropic-beta': 'mcp-client-2025-11-20' } : {},
       });
@@ -449,6 +451,7 @@ export async function runAgent({ problemText, history, onStatus, onToken, onTool
 
           try {
             const result = await handleToolCall(block.name, block.input);
+            console.log(`[orchestrator] Tool ${block.name} returned ${result.length} chars`);
             toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: result });
             // Skill activation event
             if (block.name === 'activate_skill' && onSkillActive) {
@@ -458,6 +461,7 @@ export async function runAgent({ problemText, history, onStatus, onToken, onTool
             const rs = resultSummary(block.name, result);
             if (onToolStatus) await onToolStatus({ id: block._toolId, name: block.name, inputSummary: inputSummary(block.name, block.input), status: 'done', ...rs });
           } catch (err) {
+            console.error(`[orchestrator] Tool ${block.name} error:`, err.message);
             toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: `Error: ${err.message}`, is_error: true });
             if (onToolStatus) await onToolStatus({ id: block._toolId, name: block.name, inputSummary: inputSummary(block.name, block.input), status: 'error', text: err.message });
           }
