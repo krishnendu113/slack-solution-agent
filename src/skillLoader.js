@@ -110,11 +110,23 @@ export function detectSkills(text) {
  * Main entry: detects relevant skills from problem text,
  * loads all their files, and returns the assembled prompt string.
  *
+ * Skills with alwaysLoad: true are loaded before keyword matching,
+ * regardless of the problem text content.
+ *
  * @param {string} problemText
- * @returns {Promise<{skillIds: string[], prompt: string}>}
+ * @returns {Promise<{skillIds: string[], prompt: string, matched: object[]}>}
  */
 export async function loadSkillsForProblem(problemText) {
-  const matched = detectSkills(problemText);
+  const registry = getRegistry();
+
+  // Always-on skills load first, unconditionally
+  const alwaysOn = registry.skills.filter(s => s.alwaysLoad);
+
+  // Keyword-matched skills (exclude any already in alwaysOn to avoid duplicates)
+  const alwaysOnIds = new Set(alwaysOn.map(s => s.id));
+  const keywordMatched = detectSkills(problemText).filter(s => !alwaysOnIds.has(s.id));
+
+  const matched = [...alwaysOn, ...keywordMatched];
 
   if (!matched.length) {
     return { skillIds: [], prompt: '', matched: [] };

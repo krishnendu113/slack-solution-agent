@@ -164,6 +164,7 @@ app.post('/api/conversations/:id/messages', upload.array('files', 5), async (req
       onToken: async (text) => sendEvent('token', { text }),
       onToolStatus: async (info) => sendEvent('tool_status', info),
       onSkillActive: async (info) => sendEvent('skill_active', info),
+      onPhase: async (name) => sendEvent('phase', { name }),
     });
 
     // Handle escalation

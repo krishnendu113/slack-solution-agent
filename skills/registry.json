@@ -1,6 +1,13 @@
 {
   "skills": [
     {
+      "id": "cr-evaluator",
+      "folder": "cr-evaluator",
+      "description": "CS feasibility evaluation rubric — always loaded",
+      "alwaysLoad": true,
+      "triggers": []
+    },
+    {
       "id": "capillary-sdd-writer",
       "folder": "capillary-sdd-writer",
       "description": "Generate a developer-ready Capillary SDD from a Jira epic ID or BRD text. Produces Full SDD for new integrations or Lite SDD for CRs.",

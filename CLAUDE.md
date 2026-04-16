@@ -4,11 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this project is
 
-A web-based chat agent for the Capillary Technologies Customer Success team.
-CS team members describe problems or paste Jira ticket IDs in the chat UI.
-The agent analyses them using Claude (claude-sonnet-4), searches Capillary docs and
-Confluence via MCP, dynamically loads specialist skills (SDD writer, gap analyzer,
-Excalidraw), and returns solution options — or flags for SA escalation.
+A web-based chat agent for the Capillary Technologies Customer Success (CS) team.
+CS engineers paste Jira ticket IDs, describe client requirements, or upload documents.
+The agent analyses them using Claude, searches Jira, Confluence, Kapa docs, and
+docs.capillarytech.com, dynamically loads specialist skills, and returns structured
+solution assessments — or flags for SA escalation.
 
 ## Commands
 
@@ -19,25 +19,57 @@ npm start            # Production start
 npm run lint         # ESLint on src/
 ```
 
-No automated tests exist yet. Manual testing: run `npm run dev`, open `http://localhost:3000`.
+No automated tests. Manual testing: `npm run dev`, open `http://localhost:3000`.
 
 ## Architecture
 
-**Request flow:** Browser (`public/index.html`) → Express (`src/server.js`) REST + SSE → `src/orchestrator.js` → Anthropic API → SSE stream back to browser.
+**Request flow:**
+```
+Browser (public/index.html)
+  → POST /api/conversations/:id/messages  (multipart or JSON)
+  → server.js opens SSE stream
+  → orchestrator.js agentic loop (up to 15 turns)
+  → Anthropic SDK streaming → SSE events back to browser
+```
 
-**`src/server.js`** — Express entry point. Serves static files from `public/`, exposes REST API for conversation CRUD and an SSE streaming endpoint for agent messages.
+**SSE event types** (client subscribes to all):
+- `status` — status text (e.g. "Thinking...", "Processing tool results...")
+- `token` — streamed text delta from Claude
+- `tool_status` — `{ id, name, inputSummary, status: 'running'|'done'|'error', text?, url?, links? }`
+- `skill_active` — `{ id, description }` when a skill is loaded
+- `phase` — `{ name: 'understand'|'research'|'synthesise' }` at phase transitions
+- `message` — final `{ role, content, skillsUsed, escalated }` object
+- `error` — `{ text }` friendly error message
 
-**`src/store.js`** — JSON-file persistence at `data/conversations.json`. In-memory with write-through to disk. Conversations keyed by UUID.
+**`src/subAgent.js`** — Lightweight non-streaming Anthropic helper. `runSubAgent({ systemPrompt, userContent, model? })` makes a single `messages.create` call and returns the text string. Used for: request classification (Haiku, before main loop), tool result summarisation (Haiku, for results > 500 chars). Default model: `claude-haiku-4-5-20251001`.
 
-**`src/orchestrator.js`** — The core agent logic:
-1. Calls `skillLoader.js` which keyword-matches the problem text against `skills/registry.json` triggers, then loads all `.md` files from matched `skills/<id>/` folders into a prompt block (SKILL.md always first).
-2. Calls `mcpConfig.js` which reads `mcp.json` server definitions and resolves URLs/tokens from env vars. Servers without a URL env var are silently skipped.
-3. Assembles system prompt (base prompt + skill blocks), attaches MCP servers, calls Anthropic API via raw `fetch()`.
-4. Returns response text + escalation flag.
+**`src/orchestrator.js`** — Core agent logic. `runAgent()` runs the agentic loop:
+1. **Understand phase** — Haiku classifies request into `{ type, confidence, missingInfo[] }`. If `confidence < 0.5 AND missingInfo.length > 0`, returns early with clarifying question.
+2. **Skill loading** — always-on skills (cr-evaluator) + keyword-matched skills loaded.
+3. **Main loop** — up to 15 turns. Streams from Anthropic SDK, accumulates `content_block_*` events into `contentBlocks[]`, executes all `tool_use` blocks. Critical: strips `_toolId` from `contentBlocks` before pushing to `messages` — Anthropic rejects extra fields.
+4. **Research phase** — emitted on first turn with `stopReason === 'tool_use'`. Tool results > 500 chars are summarised by Haiku before feeding to Sonnet.
+5. **Synthesise phase** — emitted when entering a turn after tool usage.
+6. **Post-synthesis validation** — appends structured notes if response lacks a Verdict or any URL references.
+Does not own tool code — all tools are in `src/tools/`.
 
-**Streaming pattern:** `server.js` opens an SSE connection for each message. The `onStatus` callback from `runAgent()` pushes `event: status` frames. The final response is sent as `event: message`, then the stream closes.
+**`src/tools/`** — Tool definitions and handlers, one file per integration:
+- `jira.js` — `get_jira_ticket`, `search_jira`. Exports `jiraDefinitions`, `handleJiraTool()`, `adfToPlainText()`, `sanitiseQuery()`.
+- `confluence.js` — `search_confluence`, `get_confluence_page`. Exports `confluenceDefinitions`, `handleConfluenceTool()`, `htmlToPlainText()`. Includes Hystrix circuit-breaker retry.
+- `kapa.js` — `search_kapa_docs`. HTTP to `CAPILLARY_DOCS_MCP_URL`. Degrades gracefully if unconfigured.
+- `webSearch.js` — `search_docs_site`. Fetches sitemap XML (cached in memory, 1hr TTL), scores URLs by keyword overlap, fetches top 3 pages. No external search API needed.
+- `index.js` — `getTools()` returns `{ definitions: [...], handle: async (name, input) => string }`. Jira and Confluence tools are conditional on their env vars; Kapa and web search are always included. Also exports `logToolStatus()` for startup logging.
 
-**Jira integration:** `src/tools/jira.js` does direct REST API fetches for specific ticket IDs (separate from any MCP). Uses `JIRA_EMAIL` + `JIRA_API_TOKEN` for Basic auth (base64-encoded at runtime).
+**`src/skillLoader.js`** — Loads skills from `skills/registry.json`. Skills with `alwaysLoad: true` (e.g. `cr-evaluator`) are loaded first unconditionally; keyword-matched skills are appended after, deduplicated. `SKILL.md` is always loaded first within each skill folder. Returns `{ skillIds, prompt, matched }`.
+
+**`src/store.js`** — In-memory conversation store with write-through to
+`data/conversations.json`. Uses a `writeChain` promise queue to prevent concurrent write
+corruption.
+
+**`src/fileHandler.js`** — Multer config for up to 5 file uploads. Extracts PDF text via
+`pdf-parse`, encodes images as base64. `buildAnthropicContent()` returns the array-format
+content block for the Anthropic API.
+
+**`public/index.html`** — Single-file UI (all HTML/CSS/JS inline). Light theme default with dark mode toggle (persisted in localStorage). Features: phase indicator bar (Understanding → Researching → Synthesising), verdict badges (OOTB/Config/Custom/Not Feasible coloured), reference cards (Confluence/Jira/Docs icons), escalation banner with copy button, tool activity pills (spinner → checkmark), collapsible tool groups, skill banners, activity pulse bar, file upload chips, code block download buttons. Inter font (D2), JetBrains Mono for code.
 
 ## API endpoints
 
@@ -45,37 +77,51 @@ No automated tests exist yet. Manual testing: run `npm run dev`, open `http://lo
 |--------|------|---------|
 | GET | `/api/conversations` | List conversations (sidebar) |
 | POST | `/api/conversations` | Create new conversation |
-| GET | `/api/conversations/:id` | Get conversation with messages |
+| GET | `/api/conversations/:id` | Get full conversation with messages |
 | DELETE | `/api/conversations/:id` | Delete conversation |
-| POST | `/api/conversations/:id/messages` | Send message, returns SSE stream |
+| POST | `/api/conversations/:id/messages` | Send message — returns SSE stream |
+| POST | `/api/login` | Cookie-based session login |
+| GET | `/api/logout` | Clear session cookie |
 
 ## Key decisions — do not change
 
-- **ESM modules** — `"type": "module"` in package.json. Use `import/export`, not `require()`.
-  The `createRequire` calls in `skillLoader.js` and `mcpConfig.js` for JSON loading are intentional — do not change to `fs.readFileSync + JSON.parse`.
-- **Skills are files, not code** — never hardcode skill logic in JS. Always load from `skills/`.
-- **MCP URLs and tokens are always env vars** — never hardcode in `mcp.json` or JS.
-- **claude-sonnet-4-20250514** is the model. Do not change without testing cost impact.
-- **Single-file UI** — `public/index.html` contains all HTML, CSS, and JS inline. No build step.
+- **ESM modules** — `"type": "module"` in package.json. Use `import/export` everywhere.
+  The `createRequire` calls in `skillLoader.js` and `mcpConfig.js` for JSON loading are intentional.
+- **Skills are files, not code** — never hardcode skill logic in JS. All skill content lives in `skills/`.
+- **MCP is disabled** — `mcp.json` has an empty `servers` array. All Jira/Confluence calls are REST. Do not re-enable MCP without resolving OAuth token handling.
+- **`claude-sonnet-4-20250514`** is the model. Do not change without testing cost impact.
+- **Single-file UI** — `public/index.html` is all HTML/CSS/JS inline. No build step.
+- **Tool metadata must be stripped** — never include `_toolId` or other internal fields in the `messages` array sent to the Anthropic API. The `cleanBlocks` mapping in the agentic loop is load-bearing.
+- **Jira search uses `/rest/api/3/search/jql`** — the old `/rest/api/3/search` endpoint returns 410. Do not revert.
+- **Tool handlers never throw** — all handlers in `src/tools/` catch errors internally and return `JSON.stringify({ error: '...', partial: true })`. The orchestrator loop will never see an exception from a tool call.
 
 ## Environment variables
 
-All documented in `.env.example`. Required to start:
-- `ANTHROPIC_API_KEY` — for the agent to work
+All in `.env.example`. Only `ANTHROPIC_API_KEY` is required to start.
 
-Optional but recommended:
-- `PORT` — defaults to 3000
-- `JIRA_BASE_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN` — for Jira ticket fetching
-- MCP server env vars — for doc search quality
+Jira REST: `JIRA_BASE_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN`
+Confluence REST: `CONFLUENCE_BASE_URL`, `JIRA_EMAIL` (shared), `CONFLUENCE_API_TOKEN`
+Kapa docs: `CAPILLARY_DOCS_MCP_URL`, `CAPILLARY_DOCS_MCP_TOKEN` (optional — degrades gracefully if absent)
+Web search: `WEB_SEARCH_SITEMAP_URL` (optional — defaults to `https://docs.capillarytech.com/sitemap.xml`)
+Auth: `AUTH_USER` (default `admin`), `AUTH_PASS` (leave blank to disable auth)
+Tuning: `MAX_AGENT_TOKENS` (default 8000; set to 24000 for SDD generation)
 
 ## Skills system
 
-Skills live in `skills/<skill-id>/`. Each has a `SKILL.md` (loaded first) plus supporting `.md` files.
-`skillLoader.js` auto-discovers all `.md`/`.txt`/`.json`/`.jsonl` files recursively.
-Activation is keyword-based via `skills/registry.json` triggers.
+Skills live in `skills/<skill-id>/`. Each has a `SKILL.md` (loaded first) plus supporting
+files (`.md`, `.txt`, `.json`, `.jsonl`). Subfolders are included recursively.
 
-**To add a new skill:** create `skills/my-skill/SKILL.md`, add supporting files, add an entry to `skills/registry.json` with triggers. No code changes needed.
+Two activation modes via `skills/registry.json`:
+- `alwaysLoad: true` — loaded unconditionally before keyword matching (e.g. `cr-evaluator`)
+- `triggers: [...]` — keyword-matched against the problem text at runtime
+
+The agent can also call `activate_skill` dynamically at runtime.
+
+**Always-on skills:** `cr-evaluator` — the CS feasibility evaluation rubric (OOTB/Config/Custom/Not Feasible definitions, Capillary module map, complexity scoring guide). Always included in every request.
+
+**To add a skill:** create `skills/my-skill/SKILL.md`, add an entry to `skills/registry.json`
+with `id`, `folder`, `description`, and `triggers` (and optionally `alwaysLoad: true`). No JS changes needed.
 
 ## Deployment
 
-Push to GitHub → Railway auto-deploys. Env vars set in Railway dashboard. See `plan.md §7`.
+Push to GitHub → Railway auto-deploys from `main`. Set all env vars in the Railway dashboard.
