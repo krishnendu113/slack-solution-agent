@@ -125,3 +125,14 @@ with `id`, `folder`, `description`, and `triggers` (and optionally `alwaysLoad: 
 ## Deployment
 
 Push to GitHub → Railway auto-deploys from `main`. Set all env vars in the Railway dashboard.
+
+**Live URL:** *(confirm from Railway dashboard and update this line)*
+
+Required env vars in Railway:
+- `ANTHROPIC_API_KEY` — required
+- `JIRA_BASE_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN` — for Jira tools
+- `CONFLUENCE_BASE_URL`, `CONFLUENCE_API_TOKEN` — for Confluence tools
+- `CAPILLARY_DOCS_MCP_URL`, `CAPILLARY_DOCS_MCP_TOKEN` — optional (Kapa docs)
+- `WEB_SEARCH_SITEMAP_URL` — defaults to `https://docs.capillarytech.com/sitemap.xml`
+- `AUTH_USER`, `AUTH_PASS` — set AUTH_PASS to enable login protection
+- `MAX_AGENT_TOKENS` — default 8000; set to 24000 for SDD generation

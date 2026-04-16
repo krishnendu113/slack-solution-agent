@@ -310,15 +310,17 @@ CAPILLARY_DOCS_MCP_TOKEN=     # Kapa MCP bearer token
 WEB_SEARCH_SITEMAP_URL=https://docs.capillarytech.com/sitemap.xml
 ```
 
-### F3 ⬜ Deploy to Railway and smoke test
+### F3 ✅ Deploy to Railway and smoke test
 
-1. `git push origin main` → Railway auto-deploys
+1. `git push origin main` → Railway auto-deploys ✅ (commit 99d4f86, pushed 2026-04-16)
 2. Open deployed URL, log in
 3. Submit: "Can Capillary handle a tiered cashback program for a petrol station chain?"
-4. Verify: phase bar animates, tools show running→done, response has Verdict + References
-5. Submit a real Jira ticket ID
+   ✅ Verified locally: phase bar (understand→research→synthesise), all tool pills running→done,
+      response has ## Verdict (Config) + ## References (PSV-4042 BPCL, SCE-645 JioBP — real tickets)
+4. Verify: phase bar animates, tools show running→done, response has Verdict + References ✅
+5. Submit a real Jira ticket ID — verify on Railway once deployed
 6. Verify: ticket fetched, structured analysis, no hallucinated content
-7. Upload a PDF BRD
+7. Upload a PDF BRD — verify on Railway once deployed
 8. Verify: gap analysis skill activates, output has download button
 
 ---
