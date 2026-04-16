@@ -126,7 +126,7 @@ with `id`, `folder`, `description`, and `triggers` (and optionally `alwaysLoad: 
 
 Push to GitHub → Railway auto-deploys from `main`. Set all env vars in the Railway dashboard.
 
-**Live URL:** *(confirm from Railway dashboard and update this line)*
+**Live URL:** https://slack-solution-agent-production.up.railway.app/
 
 Required env vars in Railway:
 - `ANTHROPIC_API_KEY` — required

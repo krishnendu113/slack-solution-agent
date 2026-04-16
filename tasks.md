@@ -313,7 +313,7 @@ WEB_SEARCH_SITEMAP_URL=https://docs.capillarytech.com/sitemap.xml
 ### F3 ✅ Deploy to Railway and smoke test
 
 1. `git push origin main` → Railway auto-deploys ✅ (commit 99d4f86, pushed 2026-04-16)
-2. Open deployed URL, log in
+2. Open deployed URL: https://slack-solution-agent-production.up.railway.app/ ✅
 3. Submit: "Can Capillary handle a tiered cashback program for a petrol station chain?"
    ✅ Verified locally: phase bar (understand→research→synthesise), all tool pills running→done,
       response has ## Verdict (Config) + ## References (PSV-4042 BPCL, SCE-645 JioBP — real tickets)
