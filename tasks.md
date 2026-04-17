@@ -325,6 +325,91 @@ WEB_SEARCH_SITEMAP_URL=https://docs.capillarytech.com/sitemap.xml
 
 ---
 
+## Phase G — Post-Deployment Fixes
+
+_All three tasks are independent and can be worked in parallel. G3A must land before G3B._
+
+### G1 ✅ Fix intermediate narration leakage — `src/orchestrator.js`
+
+Root cause: `onToken` is called on every streaming delta including turns that end with
+`tool_use`. Intermediate narration snowballs into the message bubble.
+
+Changes:
+- Inside the per-turn loop (line ~386), declare `const turnTokens = []`
+- In the streaming delta handler (line ~403), push to `turnTokens` instead of calling `onToken`
+  and remove the `fullText +=` from the streaming path
+- After stream completes (after line ~432), add:
+  ```js
+  if (stopReason !== 'tool_use') {
+    for (const tok of turnTokens) {
+      fullText += tok;
+      if (onToken) await onToken(tok);
+    }
+  }
+  ```
+
+Verify: response bubble shows only `## Problem` onward — no "I'll search for…" preamble.
+Tool pills still animate because `onToolStatus` is unaffected.
+
+### G2 ✅ Parallel Haiku summarisation with problem context — `src/orchestrator.js`
+
+Root cause: sequential `for` loop with `await summariseToolResult()` per tool adds N × ~1 s.
+Haiku also lacks context on what the agent is trying to answer.
+
+Changes:
+- Update `summariseToolResult(toolName, rawResult, problemContext = '')` — prepend
+  `Agent is researching: "${problemContext.slice(0, 250)}"` to Haiku user content
+- Replace the single-loop tool handler with three stages:
+  1. Sequential tool execution → `rawResults[]`
+  2. `Promise.all` summarisation (pass `problemText` as context)
+  3. Assemble `toolResults[]`, emit `onToolStatus` done, handle `activate_skill` event
+
+Verify: server logs show `[orchestrator] Summarising` lines appearing at near-identical
+timestamps (parallel), not staggered.
+
+### G3A ✅ Annotate matched triggers in skillLoader — `src/skillLoader.js`
+
+Changes:
+- `detectSkills(text)`: after filtering, `.map()` each skill to add
+  `matchedTriggers: skill.triggers.filter(t => lower.includes(t))`
+- `loadSkillsForProblem()`: always-on skills annotated with `alwaysActive: true`
+  and `matchedTriggers: []`
+
+No other files need changing — `matched[]` already flows through to orchestrator.
+
+### G3B ✅ Pass trigger info in `onSkillActive` — `src/orchestrator.js`
+
+_Depends on G3A (needs `matchedTriggers` and `alwaysActive` on skill entries)._
+
+Changes:
+- Initial skill load (line ~344): emit `{ id, description, triggers: skill.matchedTriggers || [], alwaysOn: skill.alwaysActive || false }`
+- `activate_skill` tool path (line ~468): emit `{ id, description, triggers: [], alwaysOn: false }`
+
+### G3C ✅ Render trigger tags in skill banner — `public/index.html`
+
+_Depends on G3B (needs `triggers` and `alwaysOn` in SSE payload)._
+
+Changes in the `skill_active` SSE handler:
+- Build `triggerHtml`:
+  - `alwaysOn` → `<span class="skill-tag skill-tag-always">always-on</span>`
+  - `triggers.length` → one `<span class="skill-tag">"keyword"</span>` per trigger
+  - neither → empty string
+- Append `<span class="skill-banner-triggers">${triggerHtml}</span>` to banner innerHTML
+
+New CSS (alongside `.skill-banner`):
+```css
+.skill-banner-triggers { margin-left: auto; display: flex; gap: 4px; flex-wrap: wrap; }
+.skill-tag { font-size: 10px; padding: 1px 6px; border-radius: 4px;
+  background: rgba(99,102,241,0.12); color: #4f46e5; font-family: monospace; }
+.skill-tag-always { background: rgba(22,163,74,0.1); color: #16a34a; font-family: inherit; }
+[data-theme="dark"] .skill-tag { background: rgba(139,92,246,0.15); color: #c4b5fd; }
+[data-theme="dark"] .skill-tag-always { background: rgba(34,197,94,0.1); color: #4ade80; }
+```
+
+Verify: cr-evaluator banner shows `always-on` tag; SDD-triggered skill shows `"sdd"` tag.
+
+---
+
 ## Execution Order
 
 ```

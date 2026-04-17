@@ -130,6 +130,32 @@ pre-filled escalation summary the user can copy.
 
 ---
 
+## Phase G — Post-Deployment Fixes
+
+### FR-G1 — No intermediate narration in response bubble
+
+The agent must not render intermediate "thinking" narration (text produced during
+tool-calling turns) in the final message bubble. Only the synthesis-turn text — the
+structured `## Problem / ## Verdict…` output — must appear as streamed tokens. Tool
+pills already communicate what is happening during research; repetitive narration adds
+no value and confuses users.
+
+### FR-G2 — Parallel, context-aware tool result summarisation
+
+Tool result summarisation must run in parallel across all results collected from a
+single agent turn (not sequentially). Each Haiku summarisation call must receive the
+original problem statement as a context hint, so it preserves the most relevant
+details rather than summarising generically.
+
+### FR-G3 — Skill trigger visibility
+
+Each skill activation banner must clearly show why the skill loaded:
+- Keyword-matched skills: display the trigger keyword(s) that matched (e.g. `"sdd"`, `"gap"`)
+- Always-on skills: display an `always-on` label
+- Agent-activated skills (`activate_skill` tool): no trigger tag needed (agent decision)
+
+---
+
 ## Out of Scope (v1)
 
 - Role-based access control (single shared login is fine)

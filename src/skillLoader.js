@@ -101,9 +101,12 @@ export async function loadSkill(skillId) {
 export function detectSkills(text) {
   const registry = getRegistry();
   const lower = text.toLowerCase();
-  return registry.skills.filter(skill =>
-    skill.triggers.some(trigger => lower.includes(trigger))
-  );
+  return registry.skills
+    .filter(skill => skill.triggers.some(trigger => lower.includes(trigger)))
+    .map(skill => ({
+      ...skill,
+      matchedTriggers: skill.triggers.filter(trigger => lower.includes(trigger)),
+    }));
 }
 
 /**
@@ -119,8 +122,10 @@ export function detectSkills(text) {
 export async function loadSkillsForProblem(problemText) {
   const registry = getRegistry();
 
-  // Always-on skills load first, unconditionally
-  const alwaysOn = registry.skills.filter(s => s.alwaysLoad);
+  // Always-on skills load first, unconditionally — annotate so UI can show "always-on" tag
+  const alwaysOn = registry.skills
+    .filter(s => s.alwaysLoad)
+    .map(s => ({ ...s, matchedTriggers: [], alwaysActive: true }));
 
   // Keyword-matched skills (exclude any already in alwaysOn to avoid duplicates)
   const alwaysOnIds = new Set(alwaysOn.map(s => s.id));

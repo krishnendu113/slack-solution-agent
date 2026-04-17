@@ -179,11 +179,14 @@ Keep the summary concise and actionable (under 150 words total).`;
  * Summarises a large tool result to reduce tokens sent to Sonnet.
  * Returns the summary string on success, or the original result on failure.
  */
-async function summariseToolResult(toolName, rawResult) {
+async function summariseToolResult(toolName, rawResult, problemContext = '') {
   try {
     const raw = await runSubAgent({
       systemPrompt: SUMMARISE_SYSTEM_PROMPT,
-      userContent: `Tool: ${toolName}\n\nResult:\n${rawResult.slice(0, 4000)}`,
+      userContent: [
+        problemContext ? `Agent is researching: "${problemContext.slice(0, 250)}"\n\n` : '',
+        `Tool: ${toolName}\n\nResult:\n${rawResult.slice(0, 4000)}`,
+      ].join(''),
     });
     const parsed = JSON.parse(raw);
     const url = parsed.url ? `\n\nSource: ${parsed.url}` : '';
@@ -341,7 +344,14 @@ export async function runAgent({ problemText, history, onStatus, onToken, onTool
   if (skillIds.length) {
     await onStatus(`🧩 Loading skills: ${skillIds.join(', ')}...`);
     if (onSkillActive) {
-      for (const skill of matched) await onSkillActive({ id: skill.id, description: skill.description });
+      for (const skill of matched) {
+        await onSkillActive({
+          id: skill.id,
+          description: skill.description,
+          triggers: skill.matchedTriggers || [],
+          alwaysOn: skill.alwaysActive || false,
+        });
+      }
     }
   }
 
@@ -386,6 +396,7 @@ export async function runAgent({ problemText, history, onStatus, onToken, onTool
       const contentBlocks = [];
       let currentBlock = null;
       let stopReason = null;
+      const turnTokens = []; // G1: buffer text deltas — emit only from synthesis turn
 
       console.log(`[orchestrator] Turn ${turn + 1}, ${tools.length} tools, ${messages.length} messages`);
 
@@ -402,8 +413,7 @@ export async function runAgent({ problemText, history, onStatus, onToken, onTool
         } else if (event.type === 'content_block_delta') {
           if (event.delta?.type === 'text_delta' && currentBlock?.type === 'text') {
             currentBlock._text += event.delta.text;
-            fullText += event.delta.text;
-            if (onToken) await onToken(event.delta.text);
+            turnTokens.push(event.delta.text); // G1: buffer — emit only from synthesis turn
           } else if (event.delta?.type === 'input_json_delta' && currentBlock?.type === 'tool_use') {
             currentBlock._inputJson += event.delta.partial_json;
           }
@@ -431,6 +441,14 @@ export async function runAgent({ problemText, history, onStatus, onToken, onTool
         }
       }
 
+      // G1: Emit buffered text only from the final synthesis turn (not tool-calling turns)
+      if (stopReason !== 'tool_use') {
+        for (const tok of turnTokens) {
+          fullText += tok;
+          if (onToken) await onToken(tok);
+        }
+      }
+
       // Strip internal metadata before sending back to the API
       const cleanBlocks = contentBlocks.map(b => {
         if (b.type === 'tool_use') return { type: 'tool_use', id: b.id, name: b.name, input: b.input };
@@ -446,41 +464,55 @@ export async function runAgent({ problemText, history, onStatus, onToken, onTool
         }
         hasUsedTools = true;
 
-        const toolResults = [];
+        // G2 Stage 1: Execute all tools sequentially (fast I/O, avoids rate-limit burst)
+        const rawResults = [];
         for (const block of contentBlocks) {
           if (block.type !== 'tool_use') continue;
           try {
-            let result = await handle(block.name, block.input);
+            const result = await handle(block.name, block.input);
             console.log(`[orchestrator] Tool ${block.name} → ${result.length} chars`);
-
-            // B3: Summarise large tool results with Haiku to reduce Sonnet token load
-            if (result.length > 500) {
-              console.log(`[orchestrator] Summarising ${block.name} result (${result.length} chars)`);
-              result = await summariseToolResult(block.name, result);
-              console.log(`[orchestrator] Summary → ${result.length} chars`);
-            }
-
-            toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: result });
-
-            // Emit skill activation event for UI
-            if (block.name === 'activate_skill' && onSkillActive) {
-              const skillInfo = listSkills().find(s => s.id === block.input.skill_id);
-              await onSkillActive({ id: block.input.skill_id, description: skillInfo?.description || '' });
-            }
-
-            const rs = resultSummary(block.name, result);
-            if (onToolStatus) {
-              await onToolStatus({
-                id: block._toolId,
-                name: block.name,
-                inputSummary: inputSummary(block.name, block.input),
-                status: 'done',
-                ...rs,
-              });
-            }
+            rawResults.push({ block, result, err: null });
           } catch (err) {
             console.error(`[orchestrator] Tool ${block.name} threw:`, err.message);
-            toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: `Error: ${err.message}`, is_error: true });
+            rawResults.push({ block, result: null, err });
+          }
+        }
+
+        // G2 Stage 2: Parallel summarisation of large results with problem context
+        const summarised = await Promise.all(
+          rawResults.map(({ block, result, err }) => {
+            if (err || !result || result.length <= 500) return Promise.resolve(result);
+            console.log(`[orchestrator] Summarising ${block.name} (${result.length} chars)`);
+            return summariseToolResult(block.name, result, problemText);
+          })
+        );
+
+        // G2 Stage 3: Assemble tool_result messages, emit status, handle skill activation
+        const toolResults = [];
+        for (let i = 0; i < rawResults.length; i++) {
+          const { block, err } = rawResults[i];
+          const content = err
+            ? JSON.stringify({ error: err.message, partial: true })
+            : summarised[i];
+
+          if (!err && rawResults[i].result?.length > 500) {
+            console.log(`[orchestrator] Summary (${block.name}) → ${content.length} chars`);
+          }
+
+          toolResults.push({ type: 'tool_result', tool_use_id: block.id, content });
+
+          // G3B: Emit skill activation event with trigger info
+          if (block.name === 'activate_skill' && onSkillActive) {
+            const skillInfo = listSkills().find(s => s.id === block.input.skill_id);
+            await onSkillActive({
+              id: block.input.skill_id,
+              description: skillInfo?.description || '',
+              triggers: [],
+              alwaysOn: false,
+            });
+          }
+
+          if (err) {
             if (onToolStatus) {
               await onToolStatus({
                 id: block._toolId,
@@ -488,6 +520,17 @@ export async function runAgent({ problemText, history, onStatus, onToken, onTool
                 inputSummary: inputSummary(block.name, block.input),
                 status: 'error',
                 text: err.message,
+              });
+            }
+          } else {
+            const rs = resultSummary(block.name, content);
+            if (onToolStatus) {
+              await onToolStatus({
+                id: block._toolId,
+                name: block.name,
+                inputSummary: inputSummary(block.name, block.input),
+                status: 'done',
+                ...rs,
               });
             }
           }

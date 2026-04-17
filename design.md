@@ -282,3 +282,68 @@ All existing vars unchanged.
 | `CLAUDE.md` | CHANGED — updated architecture docs |
 
 **Not changed:** `src/server.js`, `src/store.js`, `src/fileHandler.js`, `src/mcpConfig.js`
+
+---
+
+## Phase G — Post-Deployment Fixes
+
+### G1 — Per-turn token buffer (fixes intermediate narration leakage)
+
+**Problem:** `onToken` was called unconditionally on every streaming text delta across
+all turns. Turns that end with `tool_use` emit narration ("I'll search for…") into the
+UI bubble before the tools have run. The next turn narrates again, producing a snowball.
+
+**Fix:** Declare `turnTokens = []` inside the per-turn loop. Push text deltas into the
+buffer instead of calling `onToken`. After streaming ends, check `stopReason`:
+- `=== 'tool_use'` → discard buffer (intermediate narration never sent to client)
+- `!== 'tool_use'` → emit all buffered tokens via `onToken` and accumulate into `fullText`
+
+`fullText` therefore contains only synthesis-turn text, which is what the post-synthesis
+validator checks and what is stored in conversation history.
+
+### G2 — Parallel Haiku summarisation with problem context
+
+**Problem:** Summarisation ran in a `for` loop — N sequential Haiku round-trips added
+N × ~1 s before Sonnet received results. Haiku also had no context about what the agent
+was trying to answer, so it could summarise irrelevant details.
+
+**Fix:** Restructure the tool result phase into three sequential stages:
+1. **Execute all tools** — stays sequential (fast I/O, avoids burst rate-limiting)
+2. **Parallel summarisation** — `Promise.all` over all results > 500 chars; each call
+   receives a `problemContext` prefix (first 250 chars of `problemText`) so Haiku knows
+   what to preserve
+3. **Assemble + emit status** — build `tool_result` messages, emit `onToolStatus` done
+
+`summariseToolResult(toolName, rawResult, problemContext = '')` gains the third param.
+
+### G3 — Skill trigger visibility
+
+**Annotation flow:**
+
+```
+skillLoader detectSkills()
+  → adds matchedTriggers: string[] to each matched entry
+  → always-on skills annotated with alwaysActive: true
+
+loadSkillsForProblem()
+  → passes annotated entries through in matched[]
+
+orchestrator onSkillActive callback
+  → emits { id, description, triggers: matchedTriggers, alwaysOn: alwaysActive }
+
+SSE skill_active event
+  → client receives triggers[] and alwaysOn flag
+
+index.html skill banner
+  → alwaysOn  → renders <span class="skill-tag skill-tag-always">always-on</span>
+  → triggers  → renders <span class="skill-tag">"keyword"</span> per trigger
+  → agent-activated (triggers=[]) → no tag rendered
+```
+
+**Files changed in Phase G:**
+
+| File | Change |
+|------|--------|
+| `src/orchestrator.js` | G1 token buffer; G2 parallel summarise + context param; G3B trigger payload |
+| `src/skillLoader.js` | G3A: `detectSkills()` returns `matchedTriggers[]`; always-on annotated `alwaysActive: true` |
+| `public/index.html` | G3C: skill banner renders trigger tags; new `.skill-tag` CSS |
