@@ -396,7 +396,6 @@ export async function runAgent({ problemText, history, onStatus, onToken, onTool
       const contentBlocks = [];
       let currentBlock = null;
       let stopReason = null;
-      const turnTokens = []; // G1: buffer text deltas — emit only from synthesis turn
 
       console.log(`[orchestrator] Turn ${turn + 1}, ${tools.length} tools, ${messages.length} messages`);
 
@@ -413,7 +412,8 @@ export async function runAgent({ problemText, history, onStatus, onToken, onTool
         } else if (event.type === 'content_block_delta') {
           if (event.delta?.type === 'text_delta' && currentBlock?.type === 'text') {
             currentBlock._text += event.delta.text;
-            turnTokens.push(event.delta.text); // G1: buffer — emit only from synthesis turn
+            fullText += event.delta.text;
+            if (onToken) await onToken(event.delta.text);
           } else if (event.delta?.type === 'input_json_delta' && currentBlock?.type === 'tool_use') {
             currentBlock._inputJson += event.delta.partial_json;
           }
@@ -441,19 +441,15 @@ export async function runAgent({ problemText, history, onStatus, onToken, onTool
         }
       }
 
-      // G1: Emit buffered text only from the final synthesis turn (not tool-calling turns)
-      if (stopReason !== 'tool_use') {
-        for (const tok of turnTokens) {
-          fullText += tok;
-          if (onToken) await onToken(tok);
-        }
-      }
-
-      // Strip internal metadata before sending back to the API
-      const cleanBlocks = contentBlocks.map(b => {
-        if (b.type === 'tool_use') return { type: 'tool_use', id: b.id, name: b.name, input: b.input };
-        return b;
-      });
+      // Strip internal metadata before sending back to the API.
+      // For tool-calling turns, also strip text blocks — the model's narration ("I'll search for...")
+      // is included in context for the next turn, causing it to repeat all prior narration verbatim.
+      // Keeping only tool_use blocks breaks the snowball: each turn starts fresh.
+      const cleanBlocks = contentBlocks
+        .filter(b => stopReason !== 'tool_use' || b.type !== 'text')
+        .map(b => b.type === 'tool_use'
+          ? { type: 'tool_use', id: b.id, name: b.name, input: b.input }
+          : b);
       messages.push({ role: 'assistant', content: cleanBlocks });
 
       if (stopReason === 'tool_use') {
