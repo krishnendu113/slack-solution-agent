@@ -502,3 +502,38 @@ A1, A2, A3, A4  (parallel within phase)
 ```
 
 UI (D) can run in parallel with B and C once A is complete.
+
+---
+
+## Phase I — Multi-user auth, SSO, Client Persona, LangGraph
+
+### I-1: Multi-user auth ✅
+
+- ✅ I1.1 Install `bcrypt` and `express-session`
+- ✅ I1.2 Create `src/auth.js` with login/logout/me/register routes + `requireAuth` middleware + `bootstrapAdminIfNeeded()`
+- ✅ I1.3 Update `src/server.js`: mount express-session, auth router, requireAuth guard; remove old AUTH_PASS-based auth
+- ✅ I1.4 Update `public/login.html`: email field, new endpoint `/api/auth/login`
+- ✅ I1.5 Update `public/index.html`: logout → `/api/auth/logout`, display user email from `/api/auth/me`
+
+### I-2: Google / Microsoft SSO ✅
+
+- ✅ I2.1 Install `passport`, `passport-google-oauth20`, `passport-microsoft`
+- ✅ I2.2 Add passport strategies + SSO routes to `src/auth.js`; domain restriction via `ALLOWED_EMAIL_DOMAIN`
+- ✅ I2.3 Add Google and Microsoft SSO buttons to `public/login.html`
+
+### I-3: Client persona ✅
+
+- ✅ I3.1 Create `src/clientPersona.js` with `detectClientName`, `loadClientPersona`, `getClientContext`, `updateClientPersona`
+- ✅ I3.2 Wire into `src/orchestrator.js`: inject context into system prompt, fire-and-forget update after synthesis
+
+### I-4: LangGraph orchestration + LangSmith observability ✅
+
+- ✅ I4.1 Install `@langchain/langgraph`, `@langchain/core`, `langsmith`
+- ✅ I4.2 Create `src/graph.js`: StateGraph with classify, loadSkills, research (looping), validate nodes
+- ✅ I4.3 Wrap each node with `maybeTraceable()` using `langsmith/traceable`
+- ✅ I4.4 Refactor `src/orchestrator.js` to thin adapter: pre-flight classify, then `buildGraph().invoke()`
+- ✅ I4.5 Remove dead helper functions (inputSummary, resultSummary, summariseToolResult, detectSkillsSemantic) from orchestrator
+
+### I-misc ✅
+
+- ✅ Serve `presentation.html` at `/about` route in `server.js`

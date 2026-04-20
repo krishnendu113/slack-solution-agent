@@ -15,10 +15,9 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
-import { loadSkillsForProblem, listSkills } from './skillLoader.js';
-import { getTools } from './tools/index.js';
 import { runSubAgent } from './subAgent.js';
-import { getClientContext, updateClientPersona } from './clientPersona.js';
+import { updateClientPersona } from './clientPersona.js';
+import { buildGraph } from './graph.js';
 
 // ─── SDK Client ───────────────────────────────────────────────────────────────
 
@@ -48,69 +47,6 @@ function friendlyError(err) {
   if (status >= 500) return new AgentError("Anthropic's servers are having a rough day. Try again shortly.", msg);
   if (msg.includes('context length') || msg.includes('too long')) return new AgentError("Conversation too long for Claude. Start a new chat.", msg);
   return new AgentError(`Something unexpected happened (${status || 'unknown'}). Check server logs.`, msg);
-}
-
-// ─── Tool UI Helpers ──────────────────────────────────────────────────────────
-
-function inputSummary(name, input) {
-  switch (name) {
-    case 'get_jira_ticket': return input.ticket_id || '';
-    case 'search_jira': return `"${input.query || ''}"`;
-    case 'search_confluence': return `"${input.query || ''}"`;
-    case 'get_confluence_page': return `page ${input.page_id || ''}`;
-    case 'search_kapa_docs': return `"${input.query || ''}"`;
-    case 'search_docs_site': return `"${input.query || ''}"`;
-    case 'activate_skill': return input.skill_id || '';
-    case 'list_skills': return '';
-    default: return name;
-  }
-}
-
-function resultSummary(name, result) {
-  try {
-    if (typeof result === 'string' && (
-      result.startsWith('Error:') || result.startsWith('Jira') ||
-      result.startsWith('Confluence') || result.startsWith('Failed') ||
-      result.startsWith('Unknown')
-    )) return { text: result };
-
-    if (name === 'activate_skill') return { text: 'Skill loaded' };
-
-    const parsed = JSON.parse(result);
-
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && parsed.error) {
-      return { text: parsed.error };
-    }
-
-    switch (name) {
-      case 'get_jira_ticket':
-        return { text: `"${parsed.summary}" (${parsed.status}, ${parsed.priority})`, url: parsed.url };
-      case 'search_jira':
-        return Array.isArray(parsed)
-          ? { text: `Found ${parsed.length} ticket(s)`, links: parsed.map(t => ({ label: t.id, url: t.url })) }
-          : { text: 'Done' };
-      case 'search_confluence':
-        return Array.isArray(parsed)
-          ? { text: `Found ${parsed.length} page(s)`, links: parsed.map(p => ({ label: (p.title || '').slice(0, 40) || p.id, url: p.url })) }
-          : { text: 'Done' };
-      case 'get_confluence_page':
-        return { text: `"${parsed.title || 'Untitled'}"`, url: parsed.url };
-      case 'search_kapa_docs':
-        return Array.isArray(parsed)
-          ? { text: `Found ${parsed.length} doc(s)`, links: parsed.map(d => ({ label: (d.title || '').slice(0, 40), url: d.url })) }
-          : { text: 'Done' };
-      case 'search_docs_site':
-        return Array.isArray(parsed)
-          ? { text: `Found ${parsed.length} page(s)`, links: parsed.map(d => ({ label: (d.title || '').slice(0, 40), url: d.url })) }
-          : { text: 'Done' };
-      case 'list_skills':
-        return { text: `${Array.isArray(parsed) ? parsed.length : '?'} skill(s) available` };
-      default:
-        return { text: 'Done' };
-    }
-  } catch {
-    return { text: 'Done' };
-  }
 }
 
 // ─── Sub-Agent: Request Classification ───────────────────────────────────────
@@ -160,81 +96,6 @@ async function classifyRequest(problemText) {
   } catch (err) {
     console.warn('[orchestrator] Classification failed, proceeding without it:', err.message);
     return { type: 'general_query', confidence: 0.8, missingInfo: [] };
-  }
-}
-
-// ─── Sub-Agent: Tool Result Summarisation ─────────────────────────────────────
-
-const SUMMARISE_SYSTEM_PROMPT = `You are a tool result summariser for a Capillary CS Solution Agent.
-Given a raw tool result (JSON from Jira, Confluence, or docs search), produce:
-1. A 2-sentence relevance summary — what this result means for the CS request
-2. The primary URL from the result (the most relevant link)
-
-Return JSON only — no prose, no markdown fences:
-{ "summary": "...", "url": "https://..." }
-
-If no URL is present in the result, set url to null.
-Keep the summary concise and actionable (under 150 words total).`;
-
-/**
- * Summarises a large tool result to reduce tokens sent to Sonnet.
- * Returns the summary string on success, or the original result on failure.
- */
-async function summariseToolResult(toolName, rawResult, problemContext = '') {
-  try {
-    const raw = await runSubAgent({
-      systemPrompt: SUMMARISE_SYSTEM_PROMPT,
-      userContent: [
-        problemContext ? `Agent is researching: "${problemContext.slice(0, 250)}"\n\n` : '',
-        `Tool: ${toolName}\n\nResult:\n${rawResult.slice(0, 4000)}`,
-      ].join(''),
-    });
-    const parsed = JSON.parse(raw);
-    const url = parsed.url ? `\n\nSource: ${parsed.url}` : '';
-    return `${parsed.summary}${url}`;
-  } catch (err) {
-    console.warn(`[orchestrator] Summarisation failed for ${toolName}:`, err.message);
-    return rawResult; // fall back to raw result
-  }
-}
-
-// ─── Sub-Agent: Semantic Skill Detection ─────────────────────────────────────
-
-const SKILL_SELECT_SYSTEM_PROMPT = `You are a skill selector for the Capillary CS Solution Agent.
-
-Your job: given a user's problem, decide which specialist skills (if any) are needed.
-Only recommend a skill when the user is clearly asking for that type of deliverable.
-
-Available skills:
-{{SKILL_LIST}}
-
-Return JSON only — no prose, no markdown fences:
-[{ "id": "skill-id", "reason": "one sentence why this skill fits the request" }]
-
-Return [] if no specialist skills are needed. Most feasibility questions do not need one.`;
-
-/**
- * Semantically selects relevant skills using Haiku.
- * Returns [{id, reason}] on success, [] if none needed, null on failure (triggers keyword fallback).
- */
-async function detectSkillsSemantic(problemText) {
-  try {
-    const skills = listSkills().filter(s => !s.alwaysLoad);
-    if (!skills.length) return [];
-
-    const skillList = skills.map(s => `- ${s.id}: ${s.description}`).join('\n');
-    const raw = await runSubAgent({
-      systemPrompt: SKILL_SELECT_SYSTEM_PROMPT.replace('{{SKILL_LIST}}', skillList),
-      userContent: problemText,
-    });
-
-    const parsed = JSON.parse(raw);
-    const result = Array.isArray(parsed) ? parsed : [];
-    console.log(`[orchestrator] Semantic skill detection → [${result.map(r => r.id).join(', ') || 'none'}]`);
-    return result;
-  } catch (err) {
-    console.warn('[orchestrator] Semantic skill detection failed, falling back to keyword matching:', err.message);
-    return null;
   }
 }
 
@@ -357,256 +218,49 @@ export async function runAgent({ problemText, history, onStatus, onToken, onTool
     throw new AgentError("No API key found. Add ANTHROPIC_API_KEY to .env.", 'ANTHROPIC_API_KEY not set');
   }
 
-  const anthropic = getClient();
-
-  // ── Phase: Understand ──────────────────────────────────────────────────────
+  // Pre-flight clarification check — run classify in parallel with skill detection
+  // before handing off to the graph, so vague requests get a question immediately.
   await onPhase?.('understand');
   await onStatus('🔍 Analysing request...');
 
-  // H1: Run classification, semantic skill detection, and client persona in parallel (all Haiku calls)
-  const [classification, semanticMatches, { context: clientContext, slug: clientSlug }] = await Promise.all([
-    classifyRequest(problemText),
-    detectSkillsSemantic(problemText),
-    getClientContext(problemText),
-  ]);
+  const classification = await classifyRequest(problemText);
   console.log(`[orchestrator] Classification: type=${classification.type} confidence=${classification.confidence} missing=${classification.missingInfo.length}`);
 
-  // If the request is too vague AND has blocking gaps, ask for clarification immediately
   if (classification.missingInfo.length > 0 && classification.confidence < 0.5) {
     const question = [
       'To give you an accurate feasibility assessment, I need a few more details:',
       '',
       ...classification.missingInfo.map(q => `- ${q}`),
     ].join('\n');
-
     await onStatus('❓ Need clarification...');
     if (onToken) await onToken(question);
     return { text: question, skillsUsed: [], shouldEscalate: false };
   }
 
-  // Step 1: Load skills (always-on + semantic/keyword-matched)
-  // semanticMatches: [{id,reason}] = semantic hit, [] = none needed, null = fallback to keywords
-  const { skillIds, prompt: skillPrompt, matched } = await loadSkillsForProblem(problemText, semanticMatches);
-  if (skillIds.length) {
-    await onStatus(`🧩 Loading skills: ${skillIds.join(', ')}...`);
-    if (onSkillActive) {
-      for (const skill of matched) {
-        await onSkillActive({
-          id: skill.id,
-          description: skill.description,
-          triggers: skill.matchedTriggers || [],
-          alwaysOn: skill.alwaysActive || false,
-          reason: skill.matchReason || null,
-        });
-      }
-    }
-  }
+  // Delegate to LangGraph state machine
+  const graph = buildGraph(
+    { onStatus, onToken, onToolStatus, onSkillActive, onPhase },
+    BASE_SYSTEM_PROMPT
+  );
 
-  // Step 2: Assemble system prompt with classification context and optional client persona
-  const classificationContext = `\n\n---\n## Request Context (pre-classified)\nType: ${classification.type} | Confidence: ${Math.round(classification.confidence * 100)}%`;
-  const systemPrompt = (clientContext ? clientContext + '\n\n' : '') + BASE_SYSTEM_PROMPT + classificationContext + skillPrompt;
-
-  // Step 3: Build tools from registry
-  const { definitions: tools, handle } = getTools();
-
-  const maxTokens = parseInt(process.env.MAX_AGENT_TOKENS || '8000', 10);
-
-  // Step 4: Agentic loop — up to 15 turns
-  const messages = [...history];
-  let fullText = '';
-  const MAX_TURNS = 15;
-  let researchEmitted = false;
-  let synthesiseEmitted = false;
-  let hasUsedTools = false;
-
+  let result;
   try {
-    for (let turn = 0; turn < MAX_TURNS; turn++) {
-      // Emit synthesise phase when entering a turn that follows tool usage —
-      // this is the turn where Sonnet writes the structured output.
-      if (hasUsedTools && !synthesiseEmitted) {
-        await onPhase?.('synthesise');
-        synthesiseEmitted = true;
-        await onStatus('✍️ Synthesising...');
-      } else {
-        await onStatus(turn === 0 ? '🤖 Thinking...' : '🔄 Processing tool results...');
-      }
-
-      const params = {
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: maxTokens,
-        system: systemPrompt,
-        messages,
-        tools,
-        stream: true,
-      };
-
-      const contentBlocks = [];
-      let currentBlock = null;
-      let stopReason = null;
-
-      console.log(`[orchestrator] Turn ${turn + 1}, ${tools.length} tools, ${messages.length} messages`);
-
-      const stream = anthropic.messages.stream(params);
-
-      for await (const event of stream) {
-        if (event.type === 'content_block_start') {
-          currentBlock = { ...event.content_block, _text: '', _inputJson: '' };
-          if (currentBlock.type === 'tool_use' && onToolStatus) {
-            const toolId = `${currentBlock.name}-${currentBlock.id}`;
-            currentBlock._toolId = toolId;
-            await onToolStatus({ id: toolId, name: currentBlock.name, inputSummary: '', status: 'running' });
-          }
-        } else if (event.type === 'content_block_delta') {
-          if (event.delta?.type === 'text_delta' && currentBlock?.type === 'text') {
-            currentBlock._text += event.delta.text;
-            fullText += event.delta.text;
-            if (onToken) await onToken(event.delta.text);
-          } else if (event.delta?.type === 'input_json_delta' && currentBlock?.type === 'tool_use') {
-            currentBlock._inputJson += event.delta.partial_json;
-          }
-        } else if (event.type === 'content_block_stop') {
-          if (currentBlock?.type === 'tool_use') {
-            let input = {};
-            try { input = JSON.parse(currentBlock._inputJson || '{}'); } catch {}
-            contentBlocks.push({
-              type: 'tool_use',
-              id: currentBlock.id,
-              name: currentBlock.name,
-              input,
-              _toolId: currentBlock._toolId,
-            });
-            if (onToolStatus) {
-              const summary = inputSummary(currentBlock.name, input);
-              await onToolStatus({ id: currentBlock._toolId, name: currentBlock.name, inputSummary: summary, status: 'running' });
-            }
-          } else if (currentBlock?.type === 'text') {
-            contentBlocks.push({ type: 'text', text: currentBlock._text });
-          }
-          currentBlock = null;
-        } else if (event.type === 'message_delta') {
-          stopReason = event.delta?.stop_reason;
-        }
-      }
-
-      // Strip internal metadata before sending back to the API.
-      // For tool-calling turns, also strip text blocks — the model's narration ("I'll search for...")
-      // is included in context for the next turn, causing it to repeat all prior narration verbatim.
-      // Keeping only tool_use blocks breaks the snowball: each turn starts fresh.
-      const cleanBlocks = contentBlocks
-        .filter(b => stopReason !== 'tool_use' || b.type !== 'text')
-        .map(b => b.type === 'tool_use'
-          ? { type: 'tool_use', id: b.id, name: b.name, input: b.input }
-          : b);
-      messages.push({ role: 'assistant', content: cleanBlocks });
-
-      if (stopReason === 'tool_use') {
-        // ── Phase: Research (emit once on first tool turn) ─────────────────
-        if (!researchEmitted) {
-          await onPhase?.('research');
-          researchEmitted = true;
-        }
-        hasUsedTools = true;
-
-        // G2 Stage 1: Execute all tools sequentially (fast I/O, avoids rate-limit burst)
-        const rawResults = [];
-        for (const block of contentBlocks) {
-          if (block.type !== 'tool_use') continue;
-          try {
-            const result = await handle(block.name, block.input);
-            console.log(`[orchestrator] Tool ${block.name} → ${result.length} chars`);
-            rawResults.push({ block, result, err: null });
-          } catch (err) {
-            console.error(`[orchestrator] Tool ${block.name} threw:`, err.message);
-            rawResults.push({ block, result: null, err });
-          }
-        }
-
-        // G2 Stage 2: Parallel summarisation of large results with problem context
-        const summarised = await Promise.all(
-          rawResults.map(({ block, result, err }) => {
-            if (err || !result || result.length <= 500) return Promise.resolve(result);
-            console.log(`[orchestrator] Summarising ${block.name} (${result.length} chars)`);
-            return summariseToolResult(block.name, result, problemText);
-          })
-        );
-
-        // G2 Stage 3: Assemble tool_result messages, emit status, handle skill activation
-        const toolResults = [];
-        for (let i = 0; i < rawResults.length; i++) {
-          const { block, err } = rawResults[i];
-          const content = err
-            ? JSON.stringify({ error: err.message, partial: true })
-            : summarised[i];
-
-          if (!err && rawResults[i].result?.length > 500) {
-            console.log(`[orchestrator] Summary (${block.name}) → ${content.length} chars`);
-          }
-
-          toolResults.push({ type: 'tool_result', tool_use_id: block.id, content });
-
-          // G3B: Emit skill activation event with trigger info
-          if (block.name === 'activate_skill' && onSkillActive) {
-            const skillInfo = listSkills().find(s => s.id === block.input.skill_id);
-            await onSkillActive({
-              id: block.input.skill_id,
-              description: skillInfo?.description || '',
-              triggers: [],
-              alwaysOn: false,
-            });
-          }
-
-          if (err) {
-            if (onToolStatus) {
-              await onToolStatus({
-                id: block._toolId,
-                name: block.name,
-                inputSummary: inputSummary(block.name, block.input),
-                status: 'error',
-                text: err.message,
-              });
-            }
-          } else {
-            const rs = resultSummary(block.name, content);
-            if (onToolStatus) {
-              await onToolStatus({
-                id: block._toolId,
-                name: block.name,
-                inputSummary: inputSummary(block.name, block.input),
-                status: 'done',
-                ...rs,
-              });
-            }
-          }
-        }
-        messages.push({ role: 'user', content: toolResults });
-        continue;
-      }
-
-      break; // end_turn or max_tokens
-    }
+    result = await graph.invoke({
+      problemText,
+      messages: [...history],
+      classification,
+    });
   } catch (err) {
     if (err instanceof Anthropic.APIError) throw friendlyError(err);
     throw new AgentError(`Something went wrong: ${err.message}`, err.message);
   }
 
-  // E3: Post-synthesis validation — append structured notes for missing required elements
-  if (fullText) {
-    const hasLink = /https?:\/\/\S+/.test(fullText);
-    const hasVerdict = /\b(OOTB|Config|Custom|Not Feasible)\b/i.test(fullText);
-    const notes = [];
-    if (!hasVerdict) notes.push('> **Note:** A formal verdict (OOTB / Config / Custom / Not Feasible) could not be determined from the available information. Manual SA review is recommended.');
-    if (!hasLink) notes.push('> **Note:** No precedent references were found. This analysis is based on product knowledge only — citations have not been verified against live sources.');
-    if (notes.length) {
-      const noteText = '\n\n' + notes.join('\n\n');
-      fullText += noteText;
-      if (onToken) await onToken(noteText);
-    }
-  }
+  const { fullText = '', skillIds = [], clientSlug = null } = result;
 
   const escalationPhrases = ['escalate', 'sa escalation required', 'human sa', 'cannot determine', 'insufficient information', 'need more context from sa'];
   const shouldEscalate = escalationPhrases.some(p => fullText.toLowerCase().includes(p));
 
-  // Fire-and-forget: update client persona in the background (do not await)
+  // Fire-and-forget: update client persona in the background
   if (clientSlug) {
     updateClientPersona(clientSlug, problemText, fullText).catch(err =>
       console.warn('[orchestrator] Client persona update error:', err.message)

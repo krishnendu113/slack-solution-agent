@@ -384,3 +384,101 @@ tag, replacing the monospace keyword tags.
 | `src/orchestrator.js` | `detectSkillsSemantic()`; `Promise.all([classifyRequest, detectSkillsSemantic])`; `reason` in `onSkillActive` |
 | `src/skillLoader.js` | `loadSkillsForProblem(problemText, semanticMatches)` second param; `matchReason` annotation |
 | `public/index.html` | Skill banner shows `reason` tag (`.skill-tag-semantic`); new CSS |
+
+---
+
+## Phase I Design
+
+### I-1: Multi-user auth
+
+**New file: `src/auth.js`** — Express Router exported as default. Also exports `requireAuth(req,res,next)` and `bootstrapAdminIfNeeded()`.
+
+Routes:
+- `POST /api/auth/login` — verifies bcrypt hash, sets `req.session.{userId,email,role}`
+- `GET /api/auth/logout` — destroys session, redirects to `/login.html`
+- `GET /api/auth/me` — returns `{email, role}` or 401
+- `POST /api/auth/register` — admin-only; creates new user in `data/users.json`
+
+**`src/server.js`** mounts `express-session` (MemoryStore, warns in production), then the auth router, then a guard middleware that calls `requireAuth` for all paths except `/login.html` and `/api/auth/*`. Old `POST /api/login` and `GET /api/logout` removed.
+
+**`public/login.html`** updated: Username field → Email field, fetch target `/api/auth/login`, Google + Microsoft SSO buttons added (links to `/auth/google`, `/auth/microsoft`).
+
+**`public/index.html`** updated: logout href → `/api/auth/logout`; on init calls `GET /api/auth/me` and displays email in sidebar footer.
+
+**New env vars:** `SESSION_SECRET` (required, crash on absence), `BOOTSTRAP_ADMIN_EMAIL`, `BOOTSTRAP_ADMIN_PASS`.
+
+---
+
+### I-2: Google / Microsoft SSO
+
+Extends `src/auth.js` with passport.js strategies:
+
+- `passport-google-oauth20` — `GET /auth/google` + `GET /auth/google/callback`
+- `passport-microsoft` — `GET /auth/microsoft` + `GET /auth/microsoft/callback`
+
+Both callbacks call `makeSsoCallback(provider)` which:
+1. Extracts email from profile
+2. Checks email ends with `ALLOWED_EMAIL_DOMAIN` (403 if not)
+3. Calls `upsertSsoUser(email)` — creates new user with `role:'user'` on first login, returns existing on repeat
+4. On success, sets `req.session.{userId,email,role}` and redirects to `/`
+
+Strategies are only registered if the relevant env vars (`GOOGLE_CLIENT_ID` etc.) are present — app works without them.
+
+**New env vars:** `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_CALLBACK_URL`, `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET`, `MICROSOFT_CALLBACK_URL`, `ALLOWED_EMAIL_DOMAIN`.
+
+---
+
+### I-3: Client persona
+
+**New file: `src/clientPersona.js`**
+
+```
+detectClientName(problemText)  → slug | null  (Haiku JSON extraction)
+loadClientPersona(slug)        → markdown | null  (reads data/clients/{slug}.md)
+getClientContext(problemText)  → { context, slug }  (combines detect + load)
+updateClientPersona(slug, problemText, agentResponse)  → void  (Haiku delta, file write)
+```
+
+`data/clients/` directory auto-created on first use.
+
+**`src/orchestrator.js`** changes:
+- `getClientContext()` called in parallel with `classifyRequest()` in the pre-flight step
+- `clientContext` prepended to system prompt (before BASE_SYSTEM_PROMPT)
+- `updateClientPersona()` fire-and-forget after response is assembled
+
+**Delta prompt (Haiku):** "Given this prior client context and this new conversation, write a concise update (max 150 words) for the ## Recent Conversations section only."
+
+---
+
+### I-4: LangGraph orchestration
+
+**New file: `src/graph.js`** — exports `buildGraph(callbacks, baseSystemPrompt)` which returns a compiled LangGraph StateGraph.
+
+**Nodes:**
+- `classify` — runs semantic skill detection + client persona detection in parallel; uses pre-computed `classification` from orchestrator if already set
+- `loadSkills` — `loadSkillsForProblem()`, assembles `systemPrompt`
+- `research` — one Anthropic stream turn; executes tools if `stopReason === 'tool_use'`; emits all SSE callbacks
+- `validate` — post-synthesis notes for missing Verdict/References
+
+**Edges:** classify → loadSkills → research → (research | validate) based on `stopReason` and `turnCount < 15`.
+
+**LangSmith tracing:** `maybeTraceable(name, fn)` wraps each node with `traceable()` from `langsmith/traceable` when `LANGCHAIN_TRACING_V2=true`; returns the raw function otherwise.
+
+**`src/orchestrator.js`** becomes a thin adapter: pre-flight clarification check, then `buildGraph(callbacks, BASE_SYSTEM_PROMPT).invoke(initialState)`.
+
+**New env vars:** `LANGCHAIN_TRACING_V2`, `LANGCHAIN_API_KEY`, `LANGCHAIN_PROJECT`.
+
+**New packages:** `@langchain/langgraph`, `@langchain/core`, `langsmith`.
+
+**Files changed in Phase I:**
+
+| File | Change |
+|------|--------|
+| `src/auth.js` | New — multi-user auth router + passport SSO |
+| `src/server.js` | express-session, auth router mount, /about route, removed old auth |
+| `src/clientPersona.js` | New — client detection, persona load/update |
+| `src/graph.js` | New — LangGraph state machine |
+| `src/orchestrator.js` | Thin adapter, removed dead helpers, imports graph |
+| `public/login.html` | Email field, SSO buttons |
+| `public/index.html` | Updated logout URL, user email display, auth check on init |
+| `presentation.html` | New — served at /about |

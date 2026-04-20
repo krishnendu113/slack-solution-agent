@@ -175,3 +175,46 @@ Keyword matching is retained as a fallback when the semantic detection call fail
 - Slack integration (removed; web UI only)
 - Real-time collaboration / shared conversations
 - Automated ticket creation from agent output
+
+---
+
+## Phase I Requirements
+
+### FR-I1 — Multi-user authentication
+
+The application must support multiple named user accounts with individual email/password credentials. A single shared `AUTH_PASS` env var is insufficient for a team.
+
+- Users stored in `data/users.json` as `[{ id, email, passwordHash, role, createdAt }]`
+- Passwords hashed with bcrypt (cost factor 12)
+- Sessions via `express-session` with `SESSION_SECRET` env var (required on startup)
+- First admin seeded from `BOOTSTRAP_ADMIN_EMAIL` + `BOOTSTRAP_ADMIN_PASS` env vars when `data/users.json` is empty
+- Admin can register additional users via `POST /api/auth/register`
+- `SESSION_SECRET` absence must cause a hard crash on startup
+
+### FR-I2 — Google / Microsoft SSO
+
+CS engineers must be able to sign in with their Capillary Google or Microsoft work accounts. No separate password required.
+
+- SSO via passport-google-oauth20 and passport-microsoft
+- Domain restriction: reject OAuth users whose email does not end in `ALLOWED_EMAIL_DOMAIN` (default `capillarytech.com`)
+- First SSO login auto-creates a user with `role: 'user'`; subsequent logins update the session
+- SSO buttons displayed on the login page alongside password login
+- Password login must continue to work unchanged
+
+### FR-I3 — Client persona (vector-less RAG)
+
+When a conversation mentions a known client, the agent must automatically inject client-specific context (integration history, modules, known issues) into the system prompt without a vector database.
+
+- Client files stored as `data/clients/{slug}.md` with sections: Overview, Modules, Known Issues, Recent Conversations
+- Client name extracted from problem text by Haiku
+- Context injected before the base system prompt
+- After synthesis, a delta summary is appended to the client file (fire-and-forget)
+- Messages with no recognisable client name must not touch any client file
+
+### FR-I4 — LangGraph orchestration + LangSmith observability
+
+The hand-rolled agentic loop must be replaced with a LangGraph state machine for cleaner control flow. Each phase must be traceable in LangSmith when `LANGCHAIN_TRACING_V2=true`.
+
+- Graph nodes: classify, loadSkills, research (looping), validate
+- Tracing: each node wrapped with `traceable()` from `langsmith`; silently disabled when env var absent
+- All existing Phase A–H behaviour (skills, tools, streaming, escalation) must be preserved
