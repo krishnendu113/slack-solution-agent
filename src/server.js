@@ -157,7 +157,7 @@ app.post('/api/conversations/:id/messages', upload.array('files', 5), async (req
 // ─── About / presentation page ───────────────────────────────────────────────
 
 app.get('/about', (_req, res) => {
-  res.sendFile(path.join(__dirname, '../presentation.html'));
+  res.sendFile(path.join(__dirname, 'about.html'));
 });
 
 // ─── SPA fallback ────────────────────────────────────────────────────────────
