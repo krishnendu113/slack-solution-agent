@@ -18,6 +18,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { loadSkillsForProblem, listSkills } from './skillLoader.js';
 import { getTools } from './tools/index.js';
 import { runSubAgent } from './subAgent.js';
+import { getClientContext, updateClientPersona } from './clientPersona.js';
 
 // ─── SDK Client ───────────────────────────────────────────────────────────────
 
@@ -362,10 +363,11 @@ export async function runAgent({ problemText, history, onStatus, onToken, onTool
   await onPhase?.('understand');
   await onStatus('🔍 Analysing request...');
 
-  // H1: Run classification and semantic skill detection in parallel (both are Haiku calls)
-  const [classification, semanticMatches] = await Promise.all([
+  // H1: Run classification, semantic skill detection, and client persona in parallel (all Haiku calls)
+  const [classification, semanticMatches, { context: clientContext, slug: clientSlug }] = await Promise.all([
     classifyRequest(problemText),
     detectSkillsSemantic(problemText),
+    getClientContext(problemText),
   ]);
   console.log(`[orchestrator] Classification: type=${classification.type} confidence=${classification.confidence} missing=${classification.missingInfo.length}`);
 
@@ -400,9 +402,9 @@ export async function runAgent({ problemText, history, onStatus, onToken, onTool
     }
   }
 
-  // Step 2: Assemble system prompt with classification context
+  // Step 2: Assemble system prompt with classification context and optional client persona
   const classificationContext = `\n\n---\n## Request Context (pre-classified)\nType: ${classification.type} | Confidence: ${Math.round(classification.confidence * 100)}%`;
-  const systemPrompt = BASE_SYSTEM_PROMPT + classificationContext + skillPrompt;
+  const systemPrompt = (clientContext ? clientContext + '\n\n' : '') + BASE_SYSTEM_PROMPT + classificationContext + skillPrompt;
 
   // Step 3: Build tools from registry
   const { definitions: tools, handle } = getTools();
@@ -603,6 +605,13 @@ export async function runAgent({ problemText, history, onStatus, onToken, onTool
 
   const escalationPhrases = ['escalate', 'sa escalation required', 'human sa', 'cannot determine', 'insufficient information', 'need more context from sa'];
   const shouldEscalate = escalationPhrases.some(p => fullText.toLowerCase().includes(p));
+
+  // Fire-and-forget: update client persona in the background (do not await)
+  if (clientSlug) {
+    updateClientPersona(clientSlug, problemText, fullText).catch(err =>
+      console.warn('[orchestrator] Client persona update error:', err.message)
+    );
+  }
 
   return { text: fullText, skillsUsed: skillIds, shouldEscalate };
 }
