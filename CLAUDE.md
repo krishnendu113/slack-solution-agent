@@ -80,8 +80,16 @@ content block for the Anthropic API.
 | GET | `/api/conversations/:id` | Get full conversation with messages |
 | DELETE | `/api/conversations/:id` | Delete conversation |
 | POST | `/api/conversations/:id/messages` | Send message — returns SSE stream |
-| POST | `/api/login` | Cookie-based session login |
-| GET | `/api/logout` | Clear session cookie |
+| POST | `/api/auth/login` | Email + password login, sets session cookie |
+| GET | `/api/auth/logout` | Destroy session, redirect to `/login.html` |
+| GET | `/api/auth/me` | Returns `{ email, role }` or 401 |
+| POST | `/api/auth/register` | Admin-only: create new user |
+| GET | `/api/auth/providers` | Returns `{ google, microsoft }` booleans |
+| GET | `/auth/google` | Initiate Google OAuth flow |
+| GET | `/auth/google/callback` | Google OAuth callback |
+| GET | `/auth/microsoft` | Initiate Microsoft OAuth flow |
+| GET | `/auth/microsoft/callback` | Microsoft OAuth callback |
+| GET | `/about` | Serves `src/about.html` presentation page |
 
 ## Key decisions — do not change
 
@@ -103,7 +111,12 @@ Jira REST: `JIRA_BASE_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN`
 Confluence REST: `CONFLUENCE_BASE_URL`, `JIRA_EMAIL` (shared), `CONFLUENCE_API_TOKEN`
 Kapa docs: `CAPILLARY_DOCS_MCP_URL`, `CAPILLARY_DOCS_MCP_TOKEN` (optional — degrades gracefully if absent)
 Web search: `WEB_SEARCH_SITEMAP_URL` (optional — defaults to `https://docs.capillarytech.com/sitemap.xml`)
-Auth: `AUTH_USER` (default `admin`), `AUTH_PASS` (leave blank to disable auth)
+Auth (required): `SESSION_SECRET` — hard crash on absence
+Auth (bootstrap): `BOOTSTRAP_ADMIN_EMAIL`, `BOOTSTRAP_ADMIN_PASS` — seeds first admin when `data/users.json` is empty
+SSO (optional): `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_CALLBACK_URL`
+SSO (optional): `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET`, `MICROSOFT_CALLBACK_URL`
+SSO domain: `ALLOWED_EMAIL_DOMAIN` (default `capillarytech.com`)
+LangSmith (optional): `LANGCHAIN_TRACING_V2=true`, `LANGCHAIN_API_KEY`, `LANGCHAIN_PROJECT`
 Tuning: `MAX_AGENT_TOKENS` (default 8000; set to 24000 for SDD generation)
 
 ## Skills system
@@ -130,9 +143,14 @@ Push to GitHub → Railway auto-deploys from `main`. Set all env vars in the Rai
 
 Required env vars in Railway:
 - `ANTHROPIC_API_KEY` — required
+- `SESSION_SECRET` — required (hard crash on absence)
 - `JIRA_BASE_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN` — for Jira tools
 - `CONFLUENCE_BASE_URL`, `CONFLUENCE_API_TOKEN` — for Confluence tools
 - `CAPILLARY_DOCS_MCP_URL`, `CAPILLARY_DOCS_MCP_TOKEN` — optional (Kapa docs)
 - `WEB_SEARCH_SITEMAP_URL` — defaults to `https://docs.capillarytech.com/sitemap.xml`
-- `AUTH_USER`, `AUTH_PASS` — set AUTH_PASS to enable login protection
+- `BOOTSTRAP_ADMIN_EMAIL`, `BOOTSTRAP_ADMIN_PASS` — seeds first admin on fresh deploy
+- `ALLOWED_EMAIL_DOMAIN` — defaults to `capillarytech.com`
+- `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_CALLBACK_URL` — optional SSO
+- `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET`, `MICROSOFT_CALLBACK_URL` — optional SSO
+- `LANGCHAIN_TRACING_V2`, `LANGCHAIN_API_KEY`, `LANGCHAIN_PROJECT` — optional LangSmith tracing
 - `MAX_AGENT_TOKENS` — default 8000; set to 24000 for SDD generation
