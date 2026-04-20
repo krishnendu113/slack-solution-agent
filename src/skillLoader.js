@@ -119,7 +119,7 @@ export function detectSkills(text) {
  * @param {string} problemText
  * @returns {Promise<{skillIds: string[], prompt: string, matched: object[]}>}
  */
-export async function loadSkillsForProblem(problemText) {
+export async function loadSkillsForProblem(problemText, semanticMatches = null) {
   const registry = getRegistry();
 
   // Always-on skills load first, unconditionally — annotate so UI can show "always-on" tag
@@ -127,11 +127,25 @@ export async function loadSkillsForProblem(problemText) {
     .filter(s => s.alwaysLoad)
     .map(s => ({ ...s, matchedTriggers: [], alwaysActive: true }));
 
-  // Keyword-matched skills (exclude any already in alwaysOn to avoid duplicates)
   const alwaysOnIds = new Set(alwaysOn.map(s => s.id));
-  const keywordMatched = detectSkills(problemText).filter(s => !alwaysOnIds.has(s.id));
 
-  const matched = [...alwaysOn, ...keywordMatched];
+  // semanticMatches === null means Haiku failed → fall back to keyword matching
+  // semanticMatches === [] means Haiku succeeded but no skills needed → load none
+  // semanticMatches === [{id,reason}] means Haiku found relevant skills
+  let keywordOrSemantic;
+  if (semanticMatches === null) {
+    keywordOrSemantic = detectSkills(problemText).filter(s => !alwaysOnIds.has(s.id));
+  } else {
+    keywordOrSemantic = semanticMatches
+      .map(({ id, reason }) => {
+        const entry = registry.skills.find(s => s.id === id);
+        if (!entry || alwaysOnIds.has(id)) return null;
+        return { ...entry, matchedTriggers: [], matchReason: reason };
+      })
+      .filter(Boolean);
+  }
+
+  const matched = [...alwaysOn, ...keywordOrSemantic];
 
   if (!matched.length) {
     return { skillIds: [], prompt: '', matched: [] };

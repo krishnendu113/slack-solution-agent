@@ -410,6 +410,70 @@ Verify: cr-evaluator banner shows `always-on` tag; SDD-triggered skill shows `"s
 
 ---
 
+## Phase H — Semantic Skill Detection
+
+### H1 ✅ Add `detectSkillsSemantic()` + parallel execution — `src/orchestrator.js`
+
+Add `SKILL_SELECT_SYSTEM_PROMPT` const and `detectSkillsSemantic(problemText)` function:
+- Calls `listSkills().filter(s => !s.alwaysLoad)` to get candidate skills
+- Builds skill list as `- id: description` lines
+- Calls `runSubAgent({ systemPrompt, userContent: problemText })`
+- Returns `[{id, reason}]` on success, `null` on any failure (triggers keyword fallback)
+
+Replace sequential calls with parallel:
+```js
+const [classification, semanticMatches] = await Promise.all([
+  classifyRequest(problemText),
+  detectSkillsSemantic(problemText),
+]);
+```
+
+Pass `semanticMatches` to `loadSkillsForProblem(problemText, semanticMatches)`.
+
+Update `onSkillActive` payload to include `reason: skill.matchReason || null`.
+
+Verify: `[orchestrator] Semantic skill detection → [...]` in server log.
+
+### H2 ✅ Update `loadSkillsForProblem()` — `src/skillLoader.js`
+
+Add `semanticMatches = null` second parameter.
+
+```js
+if (semanticMatches === null) {
+  // Haiku failed — use keyword fallback
+  keywordOrSemantic = detectSkills(problemText).filter(s => !alwaysOnIds.has(s.id));
+} else {
+  // Use semantic results with matchReason annotation
+  keywordOrSemantic = semanticMatches
+    .map(({ id, reason }) => {
+      const entry = registry.skills.find(s => s.id === id);
+      if (!entry || alwaysOnIds.has(id)) return null;
+      return { ...entry, matchedTriggers: [], matchReason: reason };
+    })
+    .filter(Boolean);
+}
+```
+
+### H3 ✅ Render semantic reason in skill banner — `public/index.html`
+
+In `skill_active` SSE handler, update tag logic:
+```js
+const tagHtml = data.alwaysOn
+  ? '<span class="skill-tag skill-tag-always">always-on</span>'
+  : data.reason
+    ? `<span class="skill-tag skill-tag-semantic" title="${escapeHtml(data.reason)}">${escapeHtml(data.reason)}</span>`
+    : (data.triggers || []).map(t => `<span class="skill-tag">"${escapeHtml(t)}"</span>`).join('');
+```
+
+Add CSS:
+```css
+.skill-tag-semantic { background: rgba(14,165,233,0.1); color: #0284c7; font-family: inherit;
+  font-style: italic; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+[data-theme="dark"] .skill-tag-semantic { background: rgba(56,189,248,0.1); color: #38bdf8; }
+```
+
+---
+
 ## Execution Order
 
 ```

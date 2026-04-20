@@ -156,6 +156,19 @@ Each skill activation banner must clearly show why the skill loaded:
 
 ---
 
+## Phase H — Semantic Skill Detection
+
+### FR-H1 — Skill loading based on semantic intent, not keyword matching
+
+Skills must be selected based on understanding the user's intent, not substring matching
+of trigger keywords. A request for "a technical architecture document" must load the SDD
+skill even if the word "sdd" is absent. A BRD comparison request must load the gap
+analyzer even without the exact word "gap".
+
+Keyword matching is retained as a fallback when the semantic detection call fails.
+
+---
+
 ## Out of Scope (v1)
 
 - Role-based access control (single shared login is fine)

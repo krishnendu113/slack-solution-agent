@@ -347,3 +347,40 @@ index.html skill banner
 | `src/orchestrator.js` | G1 token buffer; G2 parallel summarise + context param; G3B trigger payload |
 | `src/skillLoader.js` | G3A: `detectSkills()` returns `matchedTriggers[]`; always-on annotated `alwaysActive: true` |
 | `public/index.html` | G3C: skill banner renders trigger tags; new `.skill-tag` CSS |
+
+---
+
+## Phase H — Semantic Skill Detection
+
+### H1: Haiku semantic skill selector
+
+**Problem:** `detectSkills()` uses substring matching. Misses intent-equivalent requests
+that don't use exact trigger vocabulary.
+
+**Fix:** New `detectSkillsSemantic(problemText)` in `src/orchestrator.js`. Haiku sub-agent
+call that receives skill ids + descriptions (not full content) and returns
+`[{ id, reason }]`. Runs in `Promise.all` parallel with `classifyRequest()` — zero added
+latency vs. the existing sequential flow.
+
+Fallback chain:
+```
+detectSkillsSemantic()
+  ├─ returns [{id, reason}] → loadSkillsForProblem uses these, annotates matchReason
+  ├─ returns []             → no skills needed (valid answer), always-on still load
+  └─ returns null (error)   → loadSkillsForProblem falls back to detectSkills() keywords
+```
+
+`loadSkillsForProblem(problemText, semanticMatches = null)` gains a second param. When
+`semanticMatches` is not null, keyword matching is skipped entirely.
+
+The `matchReason` string (Haiku's one-sentence explanation) is threaded through to
+`onSkillActive` as `reason` and rendered in the UI skill banner as an italic sky-blue
+tag, replacing the monospace keyword tags.
+
+**Files changed in Phase H:**
+
+| File | Change |
+|------|--------|
+| `src/orchestrator.js` | `detectSkillsSemantic()`; `Promise.all([classifyRequest, detectSkillsSemantic])`; `reason` in `onSkillActive` |
+| `src/skillLoader.js` | `loadSkillsForProblem(problemText, semanticMatches)` second param; `matchReason` annotation |
+| `public/index.html` | Skill banner shows `reason` tag (`.skill-tag-semantic`); new CSS |

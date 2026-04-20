@@ -197,6 +197,46 @@ async function summariseToolResult(toolName, rawResult, problemContext = '') {
   }
 }
 
+// ─── Sub-Agent: Semantic Skill Detection ─────────────────────────────────────
+
+const SKILL_SELECT_SYSTEM_PROMPT = `You are a skill selector for the Capillary CS Solution Agent.
+
+Your job: given a user's problem, decide which specialist skills (if any) are needed.
+Only recommend a skill when the user is clearly asking for that type of deliverable.
+
+Available skills:
+{{SKILL_LIST}}
+
+Return JSON only — no prose, no markdown fences:
+[{ "id": "skill-id", "reason": "one sentence why this skill fits the request" }]
+
+Return [] if no specialist skills are needed. Most feasibility questions do not need one.`;
+
+/**
+ * Semantically selects relevant skills using Haiku.
+ * Returns [{id, reason}] on success, [] if none needed, null on failure (triggers keyword fallback).
+ */
+async function detectSkillsSemantic(problemText) {
+  try {
+    const skills = listSkills().filter(s => !s.alwaysLoad);
+    if (!skills.length) return [];
+
+    const skillList = skills.map(s => `- ${s.id}: ${s.description}`).join('\n');
+    const raw = await runSubAgent({
+      systemPrompt: SKILL_SELECT_SYSTEM_PROMPT.replace('{{SKILL_LIST}}', skillList),
+      userContent: problemText,
+    });
+
+    const parsed = JSON.parse(raw);
+    const result = Array.isArray(parsed) ? parsed : [];
+    console.log(`[orchestrator] Semantic skill detection → [${result.map(r => r.id).join(', ') || 'none'}]`);
+    return result;
+  } catch (err) {
+    console.warn('[orchestrator] Semantic skill detection failed, falling back to keyword matching:', err.message);
+    return null;
+  }
+}
+
 // ─── Base System Prompt ───────────────────────────────────────────────────────
 
 const BASE_SYSTEM_PROMPT = `
@@ -322,8 +362,11 @@ export async function runAgent({ problemText, history, onStatus, onToken, onTool
   await onPhase?.('understand');
   await onStatus('🔍 Analysing request...');
 
-  // B2: Classify the request with Haiku before loading skills or calling tools
-  const classification = await classifyRequest(problemText);
+  // H1: Run classification and semantic skill detection in parallel (both are Haiku calls)
+  const [classification, semanticMatches] = await Promise.all([
+    classifyRequest(problemText),
+    detectSkillsSemantic(problemText),
+  ]);
   console.log(`[orchestrator] Classification: type=${classification.type} confidence=${classification.confidence} missing=${classification.missingInfo.length}`);
 
   // If the request is too vague AND has blocking gaps, ask for clarification immediately
@@ -339,8 +382,9 @@ export async function runAgent({ problemText, history, onStatus, onToken, onTool
     return { text: question, skillsUsed: [], shouldEscalate: false };
   }
 
-  // Step 1: Load skills (always-on + keyword-matched)
-  const { skillIds, prompt: skillPrompt, matched } = await loadSkillsForProblem(problemText);
+  // Step 1: Load skills (always-on + semantic/keyword-matched)
+  // semanticMatches: [{id,reason}] = semantic hit, [] = none needed, null = fallback to keywords
+  const { skillIds, prompt: skillPrompt, matched } = await loadSkillsForProblem(problemText, semanticMatches);
   if (skillIds.length) {
     await onStatus(`🧩 Loading skills: ${skillIds.join(', ')}...`);
     if (onSkillActive) {
@@ -350,6 +394,7 @@ export async function runAgent({ problemText, history, onStatus, onToken, onTool
           description: skill.description,
           triggers: skill.matchedTriggers || [],
           alwaysOn: skill.alwaysActive || false,
+          reason: skill.matchReason || null,
         });
       }
     }
