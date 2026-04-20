@@ -43,7 +43,7 @@ app.use(authRouter);
 
 // ─── Auth guard — protect everything except login page + auth endpoints ───────
 app.use((req, res, next) => {
-  const open = ['/login.html', '/api/auth/login', '/api/auth/logout', '/api/auth/me'];
+  const open = ['/login.html', '/api/auth/login', '/api/auth/logout', '/api/auth/me', '/api/auth/providers'];
   if (open.some(p => req.path === p || req.path.startsWith('/api/auth/'))) return next();
   return requireAuth(req, res, next);
 });

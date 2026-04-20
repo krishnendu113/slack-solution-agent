@@ -162,6 +162,13 @@ router.get('/api/auth/me', (req, res) => {
   res.json({ email: req.session.email, role: req.session.role });
 });
 
+router.get('/api/auth/providers', (_req, res) => {
+  res.json({
+    google: !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET),
+    microsoft: !!(process.env.MICROSOFT_CLIENT_ID && process.env.MICROSOFT_CLIENT_SECRET),
+  });
+});
+
 router.post('/api/auth/register', async (req, res) => {
   if (req.session?.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
 
