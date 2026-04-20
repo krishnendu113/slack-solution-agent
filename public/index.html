@@ -315,8 +315,9 @@
       <button class="new-chat-btn" onclick="newChat()">+ New Chat</button>
     </div>
     <div class="conv-list" id="convList"></div>
-    <div style="padding:10px 14px;border-top:1px solid var(--border)">
-      <a href="/api/logout" style="font-size:12px;color:var(--text-muted);text-decoration:none">Sign out</a>
+    <div style="padding:10px 14px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:4px">
+      <span id="userEmail" style="font-size:11px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+      <a href="/api/auth/logout" style="font-size:12px;color:var(--text-muted);text-decoration:none">Sign out</a>
     </div>
   </aside>
 
@@ -390,6 +391,15 @@ const $phaseBar = $('#phase-bar');
 
 // ─── Init ────────────────────────────────────────────────────────────────────
 loadConversations();
+(async () => {
+  try {
+    const r = await fetch('/api/auth/me');
+    if (!r.ok) { window.location.href = '/login.html'; return; }
+    const { email } = await r.json();
+    const el = document.getElementById('userEmail');
+    if (el) el.textContent = email;
+  } catch { /* ignore network errors */ }
+})();
 
 // ─── Input handling ──────────────────────────────────────────────────────────
 $input.addEventListener('keydown', (e) => {
