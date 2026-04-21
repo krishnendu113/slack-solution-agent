@@ -1,0 +1,32 @@
+{
+  "executionMode": "multi-node",
+  "outputType": "document",
+  "downloadable": true,
+  "researchPhase": ["jira", "confluence", "kapa_docs", "web_search"],
+  "synthesisPhase": [
+    { "name": "problem", "model": "haiku", "maxTokens": 512, "researchSources": ["jira", "confluence"] },
+    { "name": "constraints", "model": "haiku", "maxTokens": 512, "researchSources": ["jira", "confluence"] },
+    { "name": "systems-involved", "model": "haiku", "maxTokens": 1024, "researchSources": ["jira", "confluence"] },
+    { "name": "solution-strategy", "model": "sonnet", "maxTokens": 2048, "researchSources": ["jira", "confluence", "kapa_docs"] },
+    { "name": "architecture", "model": "sonnet", "maxTokens": 4096, "researchSources": ["jira", "confluence", "kapa_docs", "web_search"] },
+    { "name": "api-flows", "model": "sonnet", "maxTokens": 8192, "researchSources": ["jira", "confluence", "kapa_docs"] },
+    { "name": "adrs", "model": "sonnet", "maxTokens": 2048, "researchSources": ["confluence", "kapa_docs"] },
+    { "name": "nfrs", "model": "haiku", "maxTokens": 1024, "researchSources": [] },
+    { "name": "open-questions", "model": "haiku", "maxTokens": 512, "researchSources": ["jira", "confluence"] }
+  ],
+  "validation": {
+    "requiredHeadings": ["## 9\\.", "Section 9", "API [Ff]low"],
+    "requiredPatterns": ["https://capillarytech\\.atlassian\\.net/"]
+  },
+  "fileMapping": {
+    "problem": ["section-template.md"],
+    "constraints": ["section-template.md"],
+    "systems-involved": ["section-template.md"],
+    "solution-strategy": ["golden-path.md", "capillary-patterns.md"],
+    "architecture": ["diagram-rules.md", "capillary-patterns.md"],
+    "api-flows": ["golden-path.md", "style-guide.md", "api-reference-template.md", "section-template.md"],
+    "adrs": ["section-template.md"],
+    "nfrs": ["section-template.md"],
+    "open-questions": ["section-template.md"]
+  }
+}

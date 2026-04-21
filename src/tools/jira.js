@@ -75,6 +75,18 @@ export const jiraDefinitions = [
       required: ['query'],
     },
   },
+  {
+    name: 'add_jira_comment',
+    description: 'Add a comment to a Jira ticket. Use when the user explicitly requests commenting on a Jira ticket with a document summary.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        ticket_id: { type: 'string', description: 'Jira ticket ID, e.g. PSV-27923' },
+        body: { type: 'string', description: 'Comment body text (max 500 words recommended)' },
+      },
+      required: ['ticket_id', 'body'],
+    },
+  },
 ];
 
 // ─── Tool Handlers ────────────────────────────────────────────────────────────
@@ -148,6 +160,36 @@ export async function handleJiraTool(name, input) {
         })), null, 2);
       } catch (err) {
         return JSON.stringify({ error: `Jira search error: ${err.message}`, partial: true });
+      }
+    }
+
+    case 'add_jira_comment': {
+      const creds = jiraAuth();
+      if (!creds) return JSON.stringify({ error: 'Jira credentials not configured.', partial: true });
+      try {
+        const res = await fetch(
+          `${creds.baseUrl}/rest/api/3/issue/${input.ticket_id}/comment`,
+          {
+            method: 'POST',
+            headers: { Authorization: creds.auth, 'Content-Type': 'application/json', Accept: 'application/json' },
+            body: JSON.stringify({
+              body: {
+                type: 'doc',
+                version: 1,
+                content: [{ type: 'paragraph', content: [{ type: 'text', text: input.body }] }],
+              },
+            }),
+            signal: AbortSignal.timeout(5000),
+          }
+        );
+        if (!res.ok) return JSON.stringify({ error: `Jira comment failed: ${res.status}`, partial: true });
+        const data = await res.json();
+        return JSON.stringify({
+          id: data.id,
+          url: `${creds.baseUrl}/browse/${input.ticket_id}?focusedCommentId=${data.id}`,
+        });
+      } catch (err) {
+        return JSON.stringify({ error: `Jira comment error: ${err.message}`, partial: true });
       }
     }
 

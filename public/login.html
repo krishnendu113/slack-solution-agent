@@ -4,10 +4,32 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Login — Solution Agent</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%233b82f6'/><text x='16' y='22' font-family='system-ui,sans-serif' font-size='16' font-weight='700' fill='white' text-anchor='middle'>SA</text></svg>">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%230066cc'/><text x='16' y='22' font-family='system-ui,sans-serif' font-size='16' font-weight='700' fill='white' text-anchor='middle'>SA</text></svg>">
+  <script>(function(){ var t=localStorage.getItem('theme'); if(t==='dark') document.documentElement.setAttribute('data-theme','dark'); })();</script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    /* Light theme (default) */
     :root {
+      --bg: #f7f7f8;
+      --card: #ffffff;
+      --border: #e5e7eb;
+      --input-bg: #f3f4f6;
+      --text: #1a1a1a;
+      --text-muted: #6b7280;
+      --accent: #0066cc;
+      --accent-hover: #0052a3;
+      --danger: #dc2626;
+      --divider: #e5e7eb;
+      --placeholder: #9ca3af;
+      --shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    }
+
+    /* Dark theme */
+    [data-theme="dark"] {
       --bg: #1a1a2e;
       --card: #16213e;
       --border: #1e293b;
@@ -18,16 +40,20 @@
       --accent-hover: #2563eb;
       --danger: #ef4444;
       --divider: #2d3a55;
+      --placeholder: #475569;
+      --shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
     }
+
     html, body { height: 100%; }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
       background: var(--bg);
       color: var(--text);
       display: flex;
       align-items: center;
       justify-content: center;
     }
+
     .login-card {
       background: var(--card);
       border: 1px solid var(--border);
@@ -36,15 +62,31 @@
       width: 100%;
       max-width: 400px;
       text-align: center;
+      box-shadow: var(--shadow);
+      position: relative;
     }
+
+    .theme-toggle {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 5px 10px;
+      cursor: pointer;
+      font-size: 15px;
+      color: var(--text-muted);
+      transition: background 0.15s, border-color 0.15s;
+      line-height: 1;
+    }
+    .theme-toggle:hover { background: var(--input-bg); border-color: var(--accent); }
+
     .logo-text {
       font-size: 28px;
       font-weight: 700;
       letter-spacing: -0.5px;
-      background: linear-gradient(135deg, #3b82f6, #8b5cf6);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
+      color: var(--accent);
     }
     .subtitle {
       font-size: 14px;
@@ -77,7 +119,7 @@
       transition: border-color 0.15s;
     }
     .form-group input:focus { border-color: var(--accent); }
-    .form-group input::placeholder { color: #475569; }
+    .form-group input::placeholder { color: var(--placeholder); }
     .error-msg {
       color: var(--danger);
       font-size: 13px;
@@ -137,12 +179,32 @@
     .footer {
       margin-top: 24px;
       font-size: 11px;
-      color: #475569;
+      color: var(--text-muted);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+    }
+    .footer a { color: var(--text-muted); text-decoration: none; }
+    .footer a:hover { color: var(--accent); }
+    .footer .about-link {
+      font-size: 12px;
+      color: var(--accent);
+      opacity: 0.75;
+      transition: opacity 0.2s, transform 0.2s;
+      display: inline-block;
+    }
+    .footer .about-link:hover {
+      opacity: 1;
+      transform: translateX(3px);
+      text-decoration: underline;
     }
   </style>
 </head>
 <body>
   <div class="login-card">
+    <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Toggle dark/light mode">🌙</button>
+
     <div class="logo-text">Capillary</div>
     <div class="subtitle">Solution Agent</div>
 
@@ -183,10 +245,32 @@
       </a>
     </div>
 
-    <div class="footer">Capillary Technologies &mdash; Customer Success</div>
+    <div class="footer">
+      <a href="/about.html" class="about-link">Learn how this agent works →</a>
+      <span>Capillary Technologies — Customer Success</span>
+    </div>
   </div>
 
 <script>
+// Theme toggle — shared with chat and about pages via localStorage
+function toggleTheme() {
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  if (isDark) {
+    document.documentElement.removeAttribute('data-theme');
+    localStorage.setItem('theme', 'light');
+    document.getElementById('themeToggle').textContent = '🌙';
+  } else {
+    document.documentElement.setAttribute('data-theme', 'dark');
+    localStorage.setItem('theme', 'dark');
+    document.getElementById('themeToggle').textContent = '☀️';
+  }
+}
+// Init toggle button state
+(function() {
+  if (localStorage.getItem('theme') === 'dark') document.getElementById('themeToggle').textContent = '☀️';
+})();
+
+// SSO provider detection
 (async () => {
   try {
     const res = await fetch('/api/auth/providers');

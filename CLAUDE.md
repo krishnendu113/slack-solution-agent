@@ -71,6 +71,34 @@ content block for the Anthropic API.
 
 **`public/index.html`** — Single-file UI (all HTML/CSS/JS inline). Light theme default with dark mode toggle (persisted in localStorage). Features: phase indicator bar (Understanding → Researching → Synthesising), verdict badges (OOTB/Config/Custom/Not Feasible coloured), reference cards (Confluence/Jira/Docs icons), escalation banner with copy button, tool activity pills (spinner → checkmark), collapsible tool groups, skill banners, activity pulse bar, file upload chips, code block download buttons. Inter font (D2), JetBrains Mono for code.
 
+## Model Strategy
+
+Every operation uses the cheapest model that can do the job correctly.
+Sonnet tokens are spent only on tasks that genuinely require multi-source reasoning.
+
+| Operation | Model | Rationale |
+|-----------|-------|-----------|
+| Request classification | Haiku | Structured JSON output, no reasoning required |
+| Semantic skill selection | Haiku | Short list matching, no reasoning required |
+| Tool result summarisation | Haiku | Extraction and compression, no reasoning required |
+| Research branch summarisation | Haiku | Same as tool result summarisation |
+| Section writing — structural/factual | Haiku | Problem restatement, references, open questions, complexity |
+| Section writing — reasoning | Sonnet | Verdict, approach, architectural decisions |
+| Final synthesis (single-mode) | Sonnet | Multi-source reasoning across all tool results |
+| Escalation summary | Haiku | Summarisation of existing content, no new reasoning |
+| Post-synthesis validation | No model | Regex checks only |
+| Skill-specific validation | No model | Structural checks only |
+
+The `research` node streaming call is the only Sonnet streaming call in the system.
+All other model calls go through `runSubAgent()`.
+
+`runSubAgent()` enforces that only `claude-haiku-4-5-20251001` and `claude-sonnet-4-20250514`
+are valid model values — any other value throws immediately.
+
+`MAX_AGENT_TOKENS` applies only to the Sonnet streaming call in `research`.
+Haiku sub-agent calls use a fixed `max_tokens` of 1024 unless overridden by a manifest
+`synthesisPhase` entry's `maxTokens` field.
+
 ## API endpoints
 
 | Method | Path | Purpose |
@@ -89,7 +117,7 @@ content block for the Anthropic API.
 | GET | `/auth/google/callback` | Google OAuth callback |
 | GET | `/auth/microsoft` | Initiate Microsoft OAuth flow |
 | GET | `/auth/microsoft/callback` | Microsoft OAuth callback |
-| GET | `/about` | Serves `src/about.html` presentation page |
+| GET | `/about.html` | About page (served by static middleware from `public/about.html`) |
 
 ## Key decisions — do not change
 

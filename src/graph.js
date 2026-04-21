@@ -9,10 +9,11 @@
 import { StateGraph, END } from '@langchain/langgraph';
 import { traceable } from 'langsmith/traceable';
 import Anthropic from '@anthropic-ai/sdk';
-import { loadSkillsForProblem, listSkills } from './skillLoader.js';
+import { loadSkillsForProblem, loadSkillFiles, listSkills } from './skillLoader.js';
 import { getTools } from './tools/index.js';
 import { runSubAgent } from './subAgent.js';
 import { getClientContext, updateClientPersona } from './clientPersona.js';
+import { storeDocument } from './documentStore.js';
 
 const MAX_TURNS = 15;
 
@@ -118,6 +119,7 @@ If no URL is present, set url to null. Keep summary under 150 words.`;
         problemContext ? `Agent is researching: "${problemContext.slice(0, 250)}"\n\n` : '',
         `Tool: ${toolName}\n\nResult:\n${rawResult.slice(0, 4000)}`,
       ].join(''),
+      operation: 'summarise',
     });
     const parsed = JSON.parse(raw);
     const url = parsed.url ? `\n\nSource: ${parsed.url}` : '';
@@ -138,7 +140,7 @@ If no URL is present, set url to null. Keep summary under 150 words.`;
  * @returns CompiledStateGraph
  */
 export function buildGraph(callbacks, baseSystemPrompt) {
-  const { onStatus, onToken, onToolStatus, onSkillActive, onPhase } = callbacks;
+  const { onStatus, onToken, onToolStatus, onSkillActive, onPhase, onDocumentReady } = callbacks;
 
   // ── Node: classify ─────────────────────────────────────────────────────────
   // If classification was pre-computed by the orchestrator adapter, skip the Haiku call.
@@ -152,6 +154,7 @@ export function buildGraph(callbacks, baseSystemPrompt) {
           const raw = await runSubAgent({
             systemPrompt: SKILL_SELECT_SYSTEM_PROMPT.replace('{{SKILL_LIST}}', skillList),
             userContent: state.problemText,
+            operation: 'skill-select',
           });
           const parsed = JSON.parse(raw);
           return Array.isArray(parsed) ? parsed : [];
@@ -167,7 +170,7 @@ export function buildGraph(callbacks, baseSystemPrompt) {
 
   // ── Node: loadSkills ───────────────────────────────────────────────────────
   const loadSkillsNode = maybeTraceable('loadSkills', async (state) => {
-    const { skillIds, prompt: skillPrompt, matched } = await loadSkillsForProblem(
+    const { skillIds, prompt: skillPrompt, matched, manifests } = await loadSkillsForProblem(
       state.problemText, state.semanticMatches
     );
 
@@ -183,8 +186,232 @@ export function buildGraph(callbacks, baseSystemPrompt) {
     const classificationContext = `\n\n---\n## Request Context (pre-classified)\nType: ${state.classification.type} | Confidence: ${Math.round(state.classification.confidence * 100)}%`;
     const systemPrompt = (state.clientContext ? state.clientContext + '\n\n' : '') + baseSystemPrompt + classificationContext + skillPrompt;
 
-    return { skillIds, skillPrompt, systemPrompt };
+    return { skillIds, skillPrompt, systemPrompt, manifests: Object.fromEntries(manifests) };
   });
+
+  // ── Node: skillRouter ────────────────────────────────────────────────────
+  const skillRouterNode = maybeTraceable('skillRouter', async (state) => {
+    await onPhase?.('routing');
+
+    const manifests = state.manifests || {};
+    const skillIds = state.skillIds || [];
+
+    // No skills loaded → single mode
+    if (!skillIds.length) {
+      return { executionMode: 'single', mergedManifest: null };
+    }
+
+    const allManifests = skillIds.map(id => manifests[id]).filter(Boolean);
+    const hasMultiNode = allManifests.some(m => m.executionMode === 'multi-node');
+
+    if (!hasMultiNode) {
+      return { executionMode: 'single', mergedManifest: null };
+    }
+
+    // Merge researchPhase: union of all tool categories, deduplicated
+    const researchPhaseSet = new Set();
+    for (const m of allManifests) {
+      if (m.executionMode === 'multi-node') {
+        for (const tool of (m.researchPhase || [])) researchPhaseSet.add(tool);
+      }
+    }
+
+    // Use the first multi-node skill's synthesisPhase and validation
+    const primaryManifest = allManifests.find(m => m.executionMode === 'multi-node');
+
+    const mergedManifest = {
+      ...primaryManifest,
+      researchPhase: [...researchPhaseSet],
+    };
+
+    return { executionMode: 'multi-node', mergedManifest };
+  });
+
+  // ── Helper: runResearchBranch ────────────────────────────────────────────
+  const BRANCH_TOOLS = {
+    jira:       ['search_jira', 'get_jira_ticket'],
+    confluence: ['search_confluence', 'get_confluence_page'],
+    kapa_docs:  ['search_kapa_docs'],
+    web_search: ['search_docs_site'],
+  };
+
+  /**
+   * Runs one research branch targeting a single tool category.
+   * Never throws — returns partial results with error fields on failure.
+   */
+  async function runResearchBranch(source, problemText, handle, onToolStatusCb) {
+    const tools = BRANCH_TOOLS[source];
+    if (!tools) return { source, results: [], error: `Unknown source: ${source}` };
+
+    const results = [];
+    for (const toolName of tools) {
+      const toolId = `${toolName}-branch-${source}`;
+      try {
+        await onToolStatusCb?.({ id: toolId, name: toolName, inputSummary: `"${problemText.slice(0, 60)}"`, status: 'running' });
+        const raw = await handle(toolName, { query: problemText, max_results: 5 });
+        const summary = raw && raw.length > 500
+          ? await summariseToolResult(toolName, raw, problemText)
+          : raw;
+        await onToolStatusCb?.({ id: toolId, name: toolName, inputSummary: `"${problemText.slice(0, 60)}"`, status: 'done', text: 'Done' });
+        results.push({ tool: toolName, content: summary });
+      } catch (err) {
+        await onToolStatusCb?.({ id: toolId, name: toolName, inputSummary: '', status: 'error', text: err.message });
+        results.push({ tool: toolName, content: null, error: err.message });
+      }
+    }
+
+    return { source, results };
+  }
+
+  // ── Node: researchFanOut ─────────────────────────────────────────────────
+  const researchFanOutNode = maybeTraceable('researchFanOut', async (state) => {
+    const { handle } = getTools();
+    const { mergedManifest, problemText } = state;
+    const sources = mergedManifest?.researchPhase || [];
+
+    await onStatus('🔍 Researching in parallel...');
+
+    const branchResults = await Promise.all(
+      sources.map(source => runResearchBranch(source, problemText, handle, onToolStatus))
+    );
+
+    // researchResults: Record<source, BranchResult>
+    const researchResults = Object.fromEntries(
+      branchResults.map(r => [r.source, r])
+    );
+
+    // If all branches failed, fall back to single-mode
+    const allFailed = branchResults.length > 0 && branchResults.every(r =>
+      r.error || (r.results.length > 0 && r.results.every(tr => tr.error))
+    );
+
+    if (allFailed) {
+      console.warn('[graph:researchFanOut] All branches failed — falling back to single mode');
+      return { researchResults, executionMode: 'single' };
+    }
+
+    await onPhase?.('synthesise');
+
+    return { researchResults };
+  });
+
+  // ── Node: sectionWriter ──────────────────────────────────────────────────
+  const sectionWriterNode = maybeTraceable('sectionWriter', async (state) => {
+    const { mergedManifest, researchResults, problemText, skillIds, skillPrompt } = state;
+    const sections = mergedManifest?.synthesisPhase || [];
+
+    await onStatus(`✍️ Writing ${sections.length} sections...`);
+
+    const fileMapping = mergedManifest?.fileMapping || {};
+    const primarySkillId = skillIds[0] || 'unknown';
+
+    const sectionResults = await Promise.all(
+      sections.map(async (section) => {
+        await onStatus(`✍️ Writing section: ${section.name} (${section.model})...`);
+
+        // Load only the reference files this section needs (via fileMapping)
+        // Falls back to full skillPrompt if no fileMapping entry exists
+        let instructions;
+        if (fileMapping[section.name]) {
+          const sectionPrompt = await loadSkillFiles(primarySkillId, fileMapping[section.name]);
+          instructions = extractSectionInstructions(sectionPrompt, section.name);
+          console.log(`[sectionWriter] Section "${section.name}": loaded ${fileMapping[section.name].length} reference files via fileMapping`);
+        } else {
+          instructions = extractSectionInstructions(skillPrompt, section.name);
+          console.log(`[sectionWriter] Section "${section.name}": no fileMapping entry, using full skill prompt`);
+        }
+
+        return writeSectionContent({
+          section,
+          problemText,
+          researchResults,
+          sectionInstructions: instructions,
+          skillId: primarySkillId,
+        });
+      })
+    );
+
+    // Assemble in manifest order
+    const assembledDoc = sectionResults
+      .map(r => r.content)
+      .join('\n\n');
+
+    return { assembledDoc, sectionResults };
+  });
+
+  // ── Helper: writeSectionContent ──────────────────────────────────────────
+  /**
+   * Writes one section of a document using the appropriate model.
+   * Never throws — returns placeholder content on error.
+   */
+  async function writeSectionContent({ section, problemText, researchResults, sectionInstructions, skillId }) {
+    const MODEL_MAP = {
+      haiku:  'claude-haiku-4-5-20251001',
+      sonnet: 'claude-sonnet-4-20250514',
+    };
+    const model = MODEL_MAP[section.model] || MODEL_MAP.haiku;
+    const maxTokens = section.maxTokens || (section.model === 'sonnet' ? 4096 : 1024);
+
+    // Filter research results to only the sources this section cares about
+    const relevantSources = section.researchSources || Object.keys(researchResults);
+    const relevantResearch = relevantSources
+      .filter(s => researchResults[s])
+      .map(s => {
+        const branch = researchResults[s];
+        const content = branch.results
+          .filter(r => r.content)
+          .map(r => `[${r.tool}]\n${r.content}`)
+          .join('\n\n');
+        return content ? `### Research from ${s}:\n${content}` : null;
+      })
+      .filter(Boolean)
+      .join('\n\n---\n\n');
+
+    const systemPrompt = [
+      `You are writing the "${section.name}" section of a ${skillId} document.`,
+      `Follow these instructions precisely:`,
+      '',
+      sectionInstructions,
+    ].join('\n');
+
+    const userContent = [
+      `## Problem / Request\n${problemText}`,
+      relevantResearch ? `## Research Results\n${relevantResearch}` : '',
+      `## Task\nWrite the "${section.name}" section now. Output only the section content — no preamble.`,
+    ].filter(Boolean).join('\n\n');
+
+    try {
+      const content = await runSubAgent({
+        systemPrompt,
+        userContent,
+        model,
+        maxTokens,
+        operation: `section:${section.name}`,
+      });
+      return { name: section.name, content };
+    } catch (err) {
+      console.error(`[sectionWriter] Section "${section.name}" failed: ${err.message}`);
+      return {
+        name: section.name,
+        content: `\n\n> ⚠️ **Section "${section.name}" could not be generated.** Error: ${err.message}\n\n`,
+        error: err.message,
+      };
+    }
+  }
+
+  // ── Helper: extractSectionInstructions ───────────────────────────────────
+  /**
+   * Extracts the content between SECTION markers for a given section name.
+   * Falls back to the full skill prompt if no marker is found.
+   */
+  function extractSectionInstructions(skillPrompt, sectionName) {
+    const startMarker = `<!-- SECTION: ${sectionName} -->`;
+    const endMarker = `<!-- END SECTION: ${sectionName} -->`;
+    const start = skillPrompt.indexOf(startMarker);
+    const end = skillPrompt.indexOf(endMarker);
+    if (start === -1 || end === -1) return skillPrompt; // fallback: full prompt
+    return skillPrompt.slice(start + startMarker.length, end).trim();
+  }
 
   // ── Node: research (one tool-use turn) ────────────────────────────────────
   const researchNode = maybeTraceable('research', async (state) => {
@@ -227,7 +454,7 @@ export function buildGraph(callbacks, baseSystemPrompt) {
         if (event.delta?.type === 'text_delta' && currentBlock?.type === 'text') {
           currentBlock._text += event.delta.text;
           deltaText += event.delta.text;
-          if (onToken) await onToken(event.delta.text);
+          turnTokens.push(event.delta.text);  // buffer instead of streaming immediately
         } else if (event.delta?.type === 'input_json_delta' && currentBlock?.type === 'tool_use') {
           currentBlock._inputJson += event.delta.partial_json;
         }
@@ -249,6 +476,13 @@ export function buildGraph(callbacks, baseSystemPrompt) {
       }
     }
 
+    // Phase G: emit buffered tokens only for synthesis turns (not tool-use turns)
+    if (stopReason !== 'tool_use') {
+      for (const tok of turnTokens) {
+        if (onToken) await onToken(tok);
+      }
+    }
+
     const cleanBlocks = contentBlocks
       .filter(b => stopReason !== 'tool_use' || b.type !== 'text')
       .map(b => b.type === 'tool_use'
@@ -256,7 +490,12 @@ export function buildGraph(callbacks, baseSystemPrompt) {
         : b);
 
     const newMessages = [...state.messages, { role: 'assistant', content: cleanBlocks }];
-    const fullText = state.fullText + deltaText;
+    // Only accumulate text into fullText for synthesis turns (non-tool-use).
+    // Tool-use turn text was already streamed to the client in real-time via onToken
+    // but should NOT be included in the stored message to avoid duplication.
+    const fullText = stopReason !== 'tool_use'
+      ? state.fullText + deltaText
+      : state.fullText;
 
     if (stopReason !== 'tool_use') {
       return { messages: newMessages, fullText, stopReason, turnCount: state.turnCount + 1, hasUsedTools: state.hasUsedTools, synthesiseEmitted: state.synthesiseEmitted, researchEmitted: state.researchEmitted };
@@ -333,6 +572,87 @@ export function buildGraph(callbacks, baseSystemPrompt) {
     return { fullText };
   });
 
+  // ── Node: skillValidate (multi-node path) ───────────────────────────────
+  const skillValidateNode = maybeTraceable('skillValidate', async (state) => {
+    const { assembledDoc, mergedManifest, skillIds } = state;
+    if (!assembledDoc || !mergedManifest) return {};
+
+    const validation = mergedManifest.validation || {};
+    const notes = [];
+
+    // Check required headings
+    for (const pattern of (validation.requiredHeadings || [])) {
+      const re = new RegExp(pattern, 'm');
+      if (!re.test(assembledDoc)) {
+        notes.push(`> ⚠️ **Validation warning:** Required heading pattern \`${pattern}\` not found in output.`);
+      }
+    }
+
+    // Check required patterns
+    for (const pattern of (validation.requiredPatterns || [])) {
+      const re = new RegExp(pattern);
+      if (!re.test(assembledDoc)) {
+        notes.push(`> ⚠️ **Validation warning:** Required pattern \`${pattern}\` not found in output.`);
+      }
+    }
+
+    // Check required JSON fields (for JSON output skills like excalidraw)
+    if (validation.requiredJsonFields?.length) {
+      try {
+        const parsed = JSON.parse(assembledDoc);
+        for (const field of validation.requiredJsonFields) {
+          if (!(field in parsed)) {
+            notes.push(`> ⚠️ **Validation warning:** Required JSON field \`${field}\` not found in output.`);
+          }
+        }
+      } catch {
+        notes.push(`> ⚠️ **Validation warning:** Output is not valid JSON (required for ${skillIds[0]}).`);
+      }
+    }
+
+    const finalDoc = notes.length
+      ? assembledDoc + '\n\n' + notes.join('\n\n')
+      : assembledDoc;
+
+    // Document delivery: downloadable vs inline
+    if (mergedManifest.downloadable === true) {
+      const filename = `${skillIds[0]}-${new Date().toISOString().slice(0, 10)}.md`;
+      const downloadToken = storeDocument({ content: finalDoc, filename });
+
+      // Generate ≤150-word summary via Haiku
+      const summaryPrompt = `Summarise this document in under 150 words for a chat message.
+Cover: what was produced, key findings or verdict, and available delivery options.
+End with exactly this line: "📄 ${filename} ready — [Download] or say 'write to Confluence' / 'comment on JIRA-123'."
+Return plain text only.`;
+
+      const summary = await runSubAgent({
+        systemPrompt: summaryPrompt,
+        userContent: `Filename: ${filename}\n\nDocument:\n${finalDoc.slice(0, 8000)}`,
+        model: 'claude-haiku-4-5-20251001',
+        maxTokens: 512,
+        operation: 'doc-summary',
+      });
+
+      // Stream summary via onToken
+      if (onToken) await onToken(summary);
+
+      // Emit document_ready SSE event
+      if (onDocumentReady) {
+        await onDocumentReady({
+          filename,
+          sizeBytes: Buffer.byteLength(finalDoc),
+          downloadToken,
+        });
+      }
+
+      return { assembledDoc: finalDoc, fullText: summary, downloadToken };
+    }
+
+    // Not downloadable: stream the full document
+    if (onToken) await onToken(finalDoc);
+    return { assembledDoc: finalDoc, fullText: finalDoc };
+  });
+
   // ── Graph wiring ───────────────────────────────────────────────────────────
 
   const graph = new StateGraph({
@@ -352,17 +672,32 @@ export function buildGraph(callbacks, baseSystemPrompt) {
       hasUsedTools: { value: (_, n) => n ?? false, default: () => false },
       researchEmitted: { value: (_, n) => n ?? false, default: () => false },
       synthesiseEmitted: { value: (_, n) => n ?? false, default: () => false },
+      manifests: { value: (_, n) => n ?? {}, default: () => ({}) },
+      executionMode: { value: (_, n) => n ?? 'single', default: () => 'single' },
+      mergedManifest: { value: (_, n) => n ?? null, default: () => null },
+      researchResults: { value: (_, n) => n ?? {}, default: () => ({}) },
+      sectionResults: { value: (_, n) => n ?? [], default: () => [] },
+      assembledDoc: { value: (_, n) => n ?? '', default: () => '' },
+      downloadToken: { value: (_, n) => n ?? null, default: () => null },
     },
   });
 
   graph.addNode('classify', classifyNode);
   graph.addNode('loadSkills', loadSkillsNode);
+  graph.addNode('skillRouter', skillRouterNode);
+  graph.addNode('researchFanOut', researchFanOutNode);
+  graph.addNode('sectionWriter', sectionWriterNode);
+  graph.addNode('skillValidate', skillValidateNode);
   graph.addNode('research', researchNode);
   graph.addNode('validate', validateNode);
 
   graph.addEdge('__start__', 'classify');
   graph.addEdge('classify', 'loadSkills');
-  graph.addEdge('loadSkills', 'research');
+  graph.addEdge('loadSkills', 'skillRouter');
+
+  graph.addConditionalEdges('skillRouter', (state) => {
+    return state.executionMode === 'multi-node' ? 'researchFanOut' : 'research';
+  });
 
   graph.addConditionalEdges('research', (state) => {
     if (state.stopReason === 'tool_use' && state.turnCount < MAX_TURNS) return 'research';
@@ -370,6 +705,9 @@ export function buildGraph(callbacks, baseSystemPrompt) {
   });
 
   graph.addEdge('validate', '__end__');
+  graph.addEdge('researchFanOut', 'sectionWriter');
+  graph.addEdge('sectionWriter', 'skillValidate');
+  graph.addEdge('skillValidate', '__end__');
 
   return graph.compile();
 }

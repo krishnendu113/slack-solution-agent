@@ -1,0 +1,353 @@
+# Implementation Plan: Skill Execution Architecture
+
+## Overview
+
+This plan implements a structured execution architecture for the Capillary Solution Agent's skill system. Skills gain machine-readable manifests that declare execution mode, research phases, synthesis phases, and validation rules. A new `skillRouter` LangGraph node routes skills to either the existing single-LLM path or a new parallel multi-node path with research fan-out and section-by-section document writing. Document-class skills deliver output via file download rather than raw chat text. All existing skill files are rewritten to use actual web app tool names.
+
+Tasks are ordered by dependency: foundation changes first (subAgent, skillLoader), then graph nodes, then skill file rewrites, then UI/delivery, then tests.
+
+## Tasks
+
+- [x] 1. Foundation: `src/subAgent.js` — model validation, logging, and `maxTokens` support
+  - [x] 1.1 Add `VALID_MODELS` set and model validation to `runSubAgent`
+    - Add `const VALID_MODELS = new Set(['claude-haiku-4-5-20251001', 'claude-sonnet-4-20250514'])` at module level
+    - Add validation check at the top of `runSubAgent`: if `!VALID_MODELS.has(model)`, throw `Error` with message `[subAgent] Invalid model "${model}". Must be one of: ${[...VALID_MODELS].join(', ')}`
+    - _Requirements: 8.7_
+  - [x] 1.2 Add `maxTokens` and `operation` parameters to `runSubAgent`
+    - Extend the function signature: `{ systemPrompt, userContent, model, maxTokens = 1024, operation = 'unknown' }`
+    - Pass `maxTokens` to `getClient().messages.create()` as `max_tokens`
+    - Log after each call: `console.log(\`[subAgent] op=${operation} model=${model} in=${inputTokens} out=${outputTokens}\`)`
+    - Extract `inputTokens` and `outputTokens` from `response.usage`
+    - _Requirements: 8.8, 8.9_
+  - [x] 1.3 Update all existing `runSubAgent` callers to pass `operation` labels
+    - In `src/graph.js` `summariseToolResult`: add `operation: 'summarise'`
+    - In `src/graph.js` `classifyNode` skill selection: add `operation: 'skill-select'`
+    - In `src/orchestrator.js` `classifyRequest`: add `operation: 'classify'`
+    - _Requirements: 8.8_
+  - [x] 1.4 Update `buildEscalationSummary` in `src/orchestrator.js` to use Haiku via `runSubAgent`
+    - Replace the direct `anthropic.messages.create` call with `runSubAgent({ systemPrompt, userContent, model: 'claude-haiku-4-5-20251001', maxTokens: 1024, operation: 'escalation-summary' })`
+    - Remove the local `getClient()` usage in `buildEscalationSummary`
+    - _Requirements: 8.3_
+
+- [x] 2. Foundation: `src/skillLoader.js` — manifest loading, file filtering, and selective file loading
+  - [x] 2.1 Add `loadManifest(skillFolder)` function
+    - Implement as specified in design: reads `manifest.json` from `skillFolder`, returns parsed manifest or `DEFAULT_MANIFEST` on error
+    - `DEFAULT_MANIFEST = { executionMode: 'single', outputType: 'assessment', downloadable: false, researchPhase: [], synthesisPhase: [], validation: {} }`
+    - On `ENOENT`: return default silently. On parse error: `console.warn` at `[skillLoader]` level, return default
+    - Export the function
+    - _Requirements: 1.1, 1.2, 1.9_
+  - [x] 2.2 Exclude `manifest.json` from `collectSkillFiles`
+    - Add `if (entry.name === 'manifest.json') continue;` in the file loop inside `collectSkillFiles`
+    - _Requirements: 7.7_
+  - [x] 2.3 Extend `loadSkillsForProblem` to return `manifests` map
+    - Load manifests in parallel alongside `loadSkill` calls using `Promise.all`
+    - Build `manifests` as `new Map(entries)` where entries are `[skillId, manifest]` pairs
+    - Add `manifests` to the return object: `{ skillIds, prompt, matched, manifests }`
+    - Function signature remains unchanged (backward compatible)
+    - _Requirements: 7.6, 2.6_
+  - [x] 2.4 Add `loadSkillFiles(skillId, fileNames)` function
+    - Implement as specified in design: loads only the named files from a skill folder
+    - Always includes `SKILL.md` first regardless of `fileNames` content
+    - Deduplicates file list with `new Set`
+    - On missing file (`ENOENT`): `console.warn` at `[skillLoader]` level, skip the file
+    - Log loaded file count: `console.log(\`[skillLoader] loadSkillFiles(${skillId}): loaded ${sections.length}/${uniqueFiles.length} files\`)`
+    - Export the function
+    - _Requirements: 10.1, 10.2, 10.4, 10.5, 10.7, 10.8_
+  - [x]* 2.5 Write property test for `loadManifest` (Property 1: Manifest parsing never crashes)
+    - **Property 1: Manifest parsing never crashes**
+    - Install `fast-check` as a dev dependency: `npm install --save-dev fast-check`
+    - Create test file `src/__tests__/skillLoader.property.test.js`
+    - For any arbitrary string content written to a temp manifest file, `loadManifest` returns an object with `executionMode` equal to `'single'` or `'multi-node'`
+    - Use `fc.string()` arbitrary, minimum 100 runs
+    - **Validates: Requirements 1.2, 1.9**
+
+- [x] 3. Checkpoint — Verify foundation changes
+  - Ensure `runSubAgent` model validation works (invalid model throws, valid models pass)
+  - Ensure `loadManifest` handles valid JSON, invalid JSON, and missing files
+  - Ensure `loadSkillFiles` loads only specified files plus `SKILL.md`
+  - Ensure `loadSkillsForProblem` returns `manifests` alongside existing fields
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [x] 4. Graph: `skillRouter` node and new state channels in `src/graph.js`
+  - [x] 4.1 Add new state channels to the `StateGraph` channels object
+    - Add `manifests`, `executionMode`, `mergedManifest`, `researchResults`, `sectionResults`, `assembledDoc`, `downloadToken` channels as specified in the design Data Models section
+    - _Requirements: 2.6_
+  - [x] 4.2 Update `loadSkillsNode` to store manifests in state
+    - Destructure `manifests` from `loadSkillsForProblem` return value
+    - Convert `manifests` Map to plain object with `Object.fromEntries(manifests)` and return in state
+    - _Requirements: 2.6_
+  - [x] 4.3 Implement `skillRouterNode` function
+    - Read `state.manifests` and `state.skillIds`
+    - If no skills loaded: return `{ executionMode: 'single', mergedManifest: null }`
+    - If no multi-node skills: return `{ executionMode: 'single', mergedManifest: null }`
+    - If any multi-node skill: merge `researchPhase` as deduplicated union, use first multi-node skill as primary manifest, return `{ executionMode: 'multi-node', mergedManifest }`
+    - Emit `onPhase?.('routing')` at start
+    - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.7_
+  - [x] 4.4 Wire `skillRouter` into the graph topology
+    - Add `skillRouter` node: `graph.addNode('skillRouter', skillRouterNode)`
+    - Change edge from `loadSkills` to point to `skillRouter` instead of `research`
+    - Add conditional edge from `skillRouter`: `'multi-node' → 'researchFanOut'`, `'single' → 'research'`
+    - _Requirements: 2.1, 2.2, 2.3, 7.1_
+  - [x]* 4.5 Write property test for `skillRouter` routing logic (Property 2: Routing is deterministic)
+    - **Property 2: Skill router routing is deterministic from skill set**
+    - For any array of manifests with `executionMode` in `['single', 'multi-node']`, the router returns `'multi-node'` iff at least one manifest has `executionMode: 'multi-node'`
+    - Use `fc.array(fc.record({ executionMode: fc.oneof(fc.constant('single'), fc.constant('multi-node')), researchPhase: fc.array(...) }))`, minimum 100 runs
+    - **Validates: Requirements 2.2, 2.3, 2.4**
+  - [x]* 4.6 Write property test for research phase merge (Property 3: Deduplicated union)
+    - **Property 3: Research phase merge is a deduplicated union**
+    - For any collection of `researchPhase` arrays, the merged result has no duplicates and equals the set-union of all inputs
+    - Use `fc.array(fc.array(fc.constantFrom('jira', 'confluence', 'kapa_docs', 'web_search')))`, minimum 100 runs
+    - **Validates: Requirements 2.5**
+
+- [x] 5. Graph: `researchFanOut` node in `src/graph.js`
+  - [x] 5.1 Implement `runResearchBranch` helper function
+    - Define `BRANCH_TOOLS` mapping: `{ jira: ['search_jira', 'get_jira_ticket'], confluence: ['search_confluence', 'get_confluence_page'], kapa_docs: ['search_kapa_docs'], web_search: ['search_docs_site'] }`
+    - For each tool in the branch, call `handle(toolName, { query: problemText, max_results: 5 })`
+    - Summarise results > 500 chars using existing `summariseToolResult` function
+    - Emit `onToolStatus` events for each tool call (running → done/error)
+    - On tool error: catch, store `{ tool, content: null, error: err.message }`, continue to next tool
+    - Return `{ source, results }` — never throw
+    - _Requirements: 3.1, 3.3, 3.4, 3.5, 3.7_
+  - [x] 5.2 Implement `researchFanOutNode` function
+    - Read `mergedManifest.researchPhase` for the list of sources to fan out
+    - Call `Promise.all(sources.map(source => runResearchBranch(...)))` for parallel execution
+    - Build `researchResults` as `Record<source, BranchResult>` from results
+    - Emit `onStatus('🔍 Researching in parallel...')` at start
+    - Emit `onPhase?.('synthesise')` after all branches complete
+    - If all branches fail: set `executionMode: 'single'` in returned state for fallback
+    - _Requirements: 3.1, 3.2, 3.6, 3.8, 7.5_
+  - [x] 5.3 Add `researchFanOut` node to the graph
+    - `graph.addNode('researchFanOut', researchFanOutNode)`
+    - Add edge from `researchFanOut` to `sectionWriter`
+    - _Requirements: 3.1_
+  - [x]* 5.4 Write property test for research branch tool isolation (Property 4)
+    - **Property 4: Research branch tool isolation**
+    - For any branch type and problem text, the branch only calls tools from its designated set
+    - Use mock `handle` that records called tool names, verify against `BRANCH_TOOLS[branchType]`
+    - **Validates: Requirements 3.3**
+  - [x]* 5.5 Write property test for research branch failure isolation (Property 5)
+    - **Property 5: Research branch failure isolation**
+    - For any branch type where all tool calls throw, the branch returns a result with error fields rather than propagating the exception
+    - Use a `failingHandle` that always throws, verify result has `source` and `results` with `error` fields
+    - **Validates: Requirements 3.5, 4.7**
+
+- [x] 6. Graph: `sectionWriter` node in `src/graph.js`
+  - [x] 6.1 Implement `extractSectionInstructions` helper function
+    - Parse `<!-- SECTION: {name} -->` and `<!-- END SECTION: {name} -->` markers from skill prompt
+    - Return content between markers, or full skill prompt as fallback if markers not found
+    - _Requirements: 4.2, 5.6_
+  - [x] 6.2 Implement `writeSectionContent` helper function
+    - Map `section.model` to full model ID: `haiku → claude-haiku-4-5-20251001`, `sonnet → claude-sonnet-4-20250514`
+    - Set `maxTokens` from `section.maxTokens` or defaults (1024 for haiku, 4096 for sonnet)
+    - Filter `researchResults` to only `section.researchSources` (or all sources if omitted)
+    - Build system prompt with section name, skill ID, and section instructions
+    - Build user content with problem text, filtered research, and task instruction
+    - Call `runSubAgent` with `operation: \`section:${section.name}\``
+    - On error: return placeholder content with warning message, never throw
+    - _Requirements: 4.1, 4.2, 4.3, 4.7, 8.4, 8.5, 8.6_
+  - [x] 6.3 Implement `sectionWriterNode` function
+    - Read `mergedManifest.synthesisPhase` for section configs
+    - For each section: load reference files via `loadSkillFiles` if `fileMapping` entry exists, else use full `skillPrompt`
+    - Extract section instructions via `extractSectionInstructions`
+    - Log file loading strategy per section at `[sectionWriter]` level
+    - Call `Promise.all` over all sections with `writeSectionContent`
+    - Assemble sections in manifest order by joining content with `\n\n`
+    - Emit `onStatus` updates for each section being written
+    - Return `{ assembledDoc, sectionResults }`
+    - _Requirements: 4.1, 4.2, 4.4, 4.5, 4.8, 10.2, 10.3, 10.7_
+  - [x] 6.4 Add `sectionWriter` node to the graph
+    - `graph.addNode('sectionWriter', sectionWriterNode)`
+    - Add edge from `sectionWriter` to `skillValidate`
+    - _Requirements: 4.1_
+  - [x]* 6.5 Write property test for section assembly order (Property 6)
+    - **Property 6: Section assembly preserves manifest order**
+    - For any array of section names, the assembled document contains sections in the same order as the input array
+    - **Validates: Requirements 4.5**
+  - [x]* 6.6 Write property test for section writer model matching (Property 7)
+    - **Property 7: Section_Writer model matches manifest declaration**
+    - For any section config with `model: 'haiku'` or `model: 'sonnet'`, the `runSubAgent` call uses the correct full model ID
+    - Use mock `runSubAgent` that records the model parameter
+    - **Validates: Requirements 4.3, 8.4, 8.5, 8.6**
+
+- [x] 7. Graph: `skillValidate` node in `src/graph.js`
+  - [x] 7.1 Implement `skillValidateNode` function
+    - Read `assembledDoc`, `mergedManifest.validation`, and `skillIds` from state
+    - Check `requiredHeadings`: for each regex pattern, test against assembled doc
+    - Check `requiredPatterns`: for each regex pattern, test against assembled doc
+    - Check `requiredJsonFields`: parse doc as JSON, check for required top-level keys
+    - On each failed check: append `> ⚠️ **Validation warning:** ...` note to the document
+    - If all checks pass: return document unchanged
+    - Return `{ assembledDoc: finalDoc }`
+    - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 6.7, 6.8, 6.9_
+  - [x] 7.2 Add `skillValidate` node to the graph and wire to `__end__`
+    - `graph.addNode('skillValidate', skillValidateNode)`
+    - Add edge from `skillValidate` to `__end__`
+    - _Requirements: 6.1_
+  - [x]* 7.3 Write property test for skill validator (Property 10)
+    - **Property 10: Skill validator appends notes only on failure**
+    - For any document and validation config: if all checks pass, output equals input; if any check fails, output is longer than input (notes appended)
+    - **Validates: Requirements 6.7, 6.8**
+
+- [x] 8. Checkpoint — Verify graph topology end-to-end
+  - Ensure the full graph compiles: `classify → loadSkills → skillRouter → (research loop | researchFanOut → sectionWriter → skillValidate) → __end__`
+  - Ensure single-mode path is unchanged when no manifests are present
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [x] 9. Document delivery: `src/documentStore.js` and `src/server.js` endpoint
+  - [x] 9.1 Create `src/documentStore.js`
+    - Implement `storeDocument({ content, filename })`: generates UUID token, stores with 30-minute TTL, schedules cleanup via `setTimeout`, returns token
+    - Implement `getDocument(token)`: returns `{ content, filename, contentType }` if valid and not expired, `null` otherwise
+    - Content type: `.json` → `application/json`, else `text/markdown`
+    - Export both functions
+    - _Requirements: 9.3, 9.5_
+  - [x] 9.2 Add `GET /api/documents/:downloadToken` endpoint to `src/server.js`
+    - Import `getDocument` from `./documentStore.js`
+    - On valid token: respond with `Content-Disposition: attachment; filename="..."` and appropriate `Content-Type`
+    - On expired/missing token: respond with HTTP 410 and message to regenerate
+    - _Requirements: 9.5_
+  - [x] 9.3 Add document delivery logic to the multi-node path in `src/graph.js`
+    - After `skillValidate`, if `mergedManifest.downloadable === true`:
+      - Generate filename (e.g. `capillary-sdd-YYYY-MM-DD.md`)
+      - Call `storeDocument({ content: assembledDoc, filename })`
+      - Generate ≤150-word summary via Haiku `runSubAgent` with `operation: 'doc-summary'`
+      - Stream summary via `onToken` callback
+      - Emit `document_ready` SSE event with `{ filename, sizeBytes, downloadToken }`
+    - If `downloadable === false`: stream `assembledDoc` via `onToken` as before
+    - _Requirements: 9.1, 9.2, 9.3, 9.10_
+  - [x]* 9.4 Write property test for download token expiry (Property 9)
+    - **Property 9: Download token expiry**
+    - For any document stored, `getDocument` returns non-null within 30 minutes and null after 30 minutes
+    - Requires clock-injectable variants of `storeDocument`/`getDocument` for testing
+    - **Validates: Requirements 9.5**
+
+- [x] 10. New tools: `create_confluence_page` and `add_jira_comment`
+  - [x] 10.1 Add `create_confluence_page` tool to `src/tools/confluence.js`
+    - Add tool definition to `confluenceDefinitions` array with `title`, `body`, and optional `parent_page_id` parameters
+    - Add handler case in `handleConfluenceTool`: POST to `/rest/api/content` with ADF body, use `CONFLUENCE_SDD_PARENT_PAGE_ID` env var as default parent
+    - Return `{ id, title, url }` on success, error JSON on failure
+    - _Requirements: 9.6, 9.8_
+  - [x] 10.2 Add `add_jira_comment` tool to `src/tools/jira.js`
+    - Add tool definition to `jiraDefinitions` array with `ticket_id` and `body` parameters
+    - Add handler case in `handleJiraTool`: POST to `/rest/api/3/issue/{ticket_id}/comment` with ADF body
+    - Return `{ id, url }` on success, error JSON on failure
+    - _Requirements: 9.7, 9.8_
+  - [x] 10.3 Update `src/tools/index.js` to include new tools conditionally
+    - `create_confluence_page` included only when Confluence env vars are configured (existing `confOk` check)
+    - `add_jira_comment` included only when Jira env vars are configured (existing `jiraOk` check)
+    - Add routing in `handle()` for both new tool names
+    - _Requirements: 9.8_
+
+- [x] 11. Checkpoint — Verify delivery pipeline
+  - Ensure `storeDocument` / `getDocument` work correctly with TTL
+  - Ensure `GET /api/documents/:token` returns file download or 410
+  - Ensure `create_confluence_page` and `add_jira_comment` tool definitions are correct
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [x] 12. Skill manifests: create `manifest.json` files
+  - [x] 12.1 Create `skills/capillary-sdd-writer/manifest.json`
+    - `executionMode: "multi-node"`, `outputType: "document"`, `downloadable: true`
+    - `researchPhase: ["jira", "confluence", "kapa_docs", "web_search"]`
+    - `synthesisPhase` with 9 sections (problem, constraints, systems-involved, solution-strategy, architecture, api-flows, adrs, nfrs, open-questions) as specified in design
+    - `validation` with `requiredHeadings` and `requiredPatterns` as specified
+    - `fileMapping` with section-to-file mappings as specified in design and Requirements 10.9
+    - _Requirements: 1.1, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 10.1, 10.9, 10.10_
+  - [x] 12.2 Create `skills/solution-gap-analyzer/manifest.json`
+    - `executionMode: "multi-node"`, `outputType: "document"`, `downloadable: true`
+    - `researchPhase: ["confluence", "kapa_docs", "web_search"]`
+    - `synthesisPhase` with 5 sections (executive-summary, domain-analysis, gap-register, scoring, open-questions) as specified in design
+    - `validation` with `requiredPatterns` for `\\d+%` and `requiredHeadings` for domain headings
+    - _Requirements: 1.1, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 6.4, 6.5_
+  - [x] 12.3 Create `skills/excalidraw-diagram/manifest.json`
+    - `executionMode: "single"`, `outputType: "assessment"`, `downloadable: false`
+    - `researchPhase: []`, `synthesisPhase: []`
+    - `validation` with `requiredJsonFields: ["elements"]`
+    - _Requirements: 1.1, 1.3, 1.6, 6.6_
+
+- [x] 13. Skill file rewrites: remove Claude.ai-specific instructions, add Section_Markers
+  - [x] 13.1 Rewrite `skills/capillary-sdd-writer/SKILL.md`
+    - Remove all references to: `Agent` tool spawning, `ToolSearch`, `Glob`, `Bash`, `output-sdd/`, progress tracker files, `mcp__atlassian__*`, `mcp__capillary_docs__*`, `mcp__mermaid__*`
+    - Remove "Step 0 — MCP Health Check" and "Step 0.6 — Progress Tracker" sections entirely
+    - Replace MCP tool references with: `search_jira`, `get_jira_ticket`, `search_confluence`, `get_confluence_page`, `search_kapa_docs`, `search_docs_site`
+    - Preserve all domain knowledge: Tier 1–5 framework, golden path decision logic, CRITICAL data rules, output format specifications
+    - Add `<!-- SECTION: {name} -->` / `<!-- END SECTION: {name} -->` markers for all 9 sections matching manifest `synthesisPhase` names
+    - Include explicit Tier 1–5 framework reference in the `api-flows` section
+    - Ensure the file remains valid for single-mode fallback (markers are HTML comments, invisible to LLM)
+    - _Requirements: 5.1, 5.4, 5.5, 5.6, 5.7, 5.8_
+  - [x] 13.2 Rewrite `skills/solution-gap-analyzer/SKILL.md`
+    - Remove all references to: `Agent` tool spawning, `ToolSearch`, `Glob`, `Bash`, `mcp__capillary_docs__*`, `mcp__atlassian__*`, `output-plan/`, `learnings.jsonl` write operations
+    - Replace MCP tool references with web app tool names
+    - Preserve: scoring engine logic, risk flag framework, domain taxonomy, P/R/O formula, verification protocol
+    - Add Section_Markers for all 5 sections matching manifest `synthesisPhase` names
+    - _Requirements: 5.2, 5.4, 5.5, 5.6, 5.7_
+  - [x] 13.3 Rewrite `skills/excalidraw-diagram/SKILL.md`
+    - Remove all references to: `Bash`, `uv run python render_excalidraw.py`, filesystem tools, MCP tool prefixes
+    - Remove the "Render & Validate" section
+    - Preserve: all design methodology, visual pattern library, JSON structure, color palette references
+    - Add note: "Output the complete Excalidraw JSON in a code block. The client will render it."
+    - No Section_Markers needed (single-mode skill)
+    - _Requirements: 5.3, 5.4, 5.5, 5.7_
+
+- [x] 14. Client UI: download card rendering in `public/index.html`
+  - [x] 14.1 Add `document_ready` SSE event handler to the client JavaScript
+    - Parse `{ filename, sizeBytes, downloadToken }` from event data
+    - Render a download card element with filename, size in KB, and download button
+    - Download button links to `GET /api/documents/${downloadToken}`
+    - _Requirements: 9.4_
+  - [x] 14.2 Add download card CSS styles
+    - Add `.download-card`, `.download-card-icon`, `.download-card-info`, `.download-card-filename`, `.download-card-size`, `.download-card-btn` styles as specified in design
+    - _Requirements: 9.4_
+
+- [x] 15. Documentation: Model Strategy section in `CLAUDE.md`
+  - [x] 15.1 Add "Model Strategy" section to `CLAUDE.md`
+    - Document the Model_Dispatch_Policy table from Requirements 8.1
+    - Document that `runSubAgent` enforces model validation
+    - Document that `MAX_AGENT_TOKENS` applies only to the Sonnet streaming call in `research`
+    - Document that Haiku sub-agent calls default to 1024 `max_tokens` unless overridden by manifest
+    - _Requirements: 8.10_
+
+- [x] 16. Checkpoint — Verify skill manifests and rewrites
+  - Ensure all three `manifest.json` files are valid JSON and match the design schema
+  - Ensure rewritten skill files contain no Claude.ai-specific references
+  - Ensure rewritten skill files contain correct Section_Markers matching manifest section names
+  - Ensure `skillLoader.js` excludes `manifest.json` from prompt assembly
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [x] 17. Remaining property-based tests
+  - [x]* 17.1 Write property test for `runSubAgent` model validation (Property 8)
+    - **Property 8: `runSubAgent` model validation**
+    - For any string that is not in `VALID_MODELS`, `runSubAgent` throws an error matching `/Invalid model/`
+    - Use `fc.string().filter(s => !VALID_MODELS.includes(s))`, minimum 100 runs
+    - **Validates: Requirements 8.7**
+  - [x]* 17.2 Write unit tests for `extractSectionInstructions`
+    - Test with present markers: returns content between markers
+    - Test with absent markers: returns full prompt as fallback
+    - Test with nested/malformed markers: returns full prompt as fallback
+    - _Requirements: 4.2, 5.6_
+  - [x]* 17.3 Write unit tests for `skillValidateNode`
+    - Test `capillary-sdd-writer` validation: doc with Section 9 heading and Atlassian URL passes; doc without fails
+    - Test `solution-gap-analyzer` validation: doc with percentage and domain headings passes; doc without fails
+    - Test `excalidraw-diagram` validation: valid JSON with `elements` array passes; invalid JSON fails
+    - _Requirements: 6.2, 6.3, 6.4, 6.5, 6.6, 6.7, 6.8_
+  - [x]* 17.4 Write unit tests for `documentStore`
+    - Test `storeDocument` returns a token string
+    - Test `getDocument` with valid token returns document
+    - Test `getDocument` with expired token returns null (mock `Date.now`)
+    - Test `getDocument` with unknown token returns null
+    - _Requirements: 9.3, 9.5_
+
+- [x] 18. Final checkpoint — Full integration verification
+  - Ensure the complete graph compiles and runs for both single-mode and multi-node paths
+  - Ensure backward compatibility: `cr-evaluator` works without a manifest
+  - Ensure existing SSE callback contracts are unchanged for single-mode
+  - Ensure all tests pass, ask the user if questions arise.
+
+## Notes
+
+- Tasks marked with `*` are optional and can be skipped for faster MVP
+- Each task references specific requirements for traceability
+- Checkpoints ensure incremental validation after each major phase
+- Property tests validate universal correctness properties from the design document
+- Unit tests validate specific examples and edge cases
+- The codebase is Node.js ESM (`"type": "module"` in `package.json`) — all imports use ESM syntax
+- `fast-check` needs to be installed as a dev dependency for property-based tests (task 2.5)
+- No test runner exists yet — tests can use Node.js built-in `node:test` or install `vitest`

@@ -67,6 +67,22 @@ export const confluenceDefinitions = [
       required: ['page_id'],
     },
   },
+  {
+    name: 'create_confluence_page',
+    description: 'Create a new Confluence page with the given title and markdown body content. Use when the user explicitly requests saving a document to Confluence.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: 'Page title' },
+        body: { type: 'string', description: 'Page body in markdown or plain text' },
+        parent_page_id: {
+          type: 'string',
+          description: 'Parent page ID. Defaults to CONFLUENCE_SDD_PARENT_PAGE_ID env var if not provided.',
+        },
+      },
+      required: ['title', 'body'],
+    },
+  },
 ];
 
 // ─── Tool Handlers ────────────────────────────────────────────────────────────
@@ -144,6 +160,43 @@ export async function handleConfluenceTool(name, input) {
         }, null, 2);
       } catch (err) {
         return JSON.stringify({ error: `Confluence page fetch error: ${err.message}`, partial: true });
+      }
+    }
+
+    case 'create_confluence_page': {
+      const creds = confluenceAuth();
+      if (!creds) return JSON.stringify({ error: 'Confluence credentials not configured.', partial: true });
+      const parentId = input.parent_page_id || process.env.CONFLUENCE_SDD_PARENT_PAGE_ID;
+      if (!parentId) return JSON.stringify({ error: 'No parent page ID provided and CONFLUENCE_SDD_PARENT_PAGE_ID is not set.', partial: true });
+
+      const body = {
+        type: 'page',
+        title: input.title,
+        ancestors: [{ id: parentId }],
+        body: {
+          storage: {
+            value: `<p>${input.body.replace(/\n/g, '</p><p>')}</p>`,
+            representation: 'storage',
+          },
+        },
+      };
+
+      try {
+        const res = await fetch(`${creds.baseUrl}/rest/api/content`, {
+          method: 'POST',
+          headers: { Authorization: creds.auth, 'Content-Type': 'application/json', Accept: 'application/json' },
+          body: JSON.stringify(body),
+          signal: AbortSignal.timeout(10000),
+        });
+        if (!res.ok) return JSON.stringify({ error: `Confluence create failed: ${res.status}`, partial: true });
+        const page = await res.json();
+        return JSON.stringify({
+          id: page.id,
+          title: page.title,
+          url: `${creds.baseUrl}${page._links?.webui || `/pages/${page.id}`}`,
+        });
+      } catch (err) {
+        return JSON.stringify({ error: `Confluence create error: ${err.message}`, partial: true });
       }
     }
 

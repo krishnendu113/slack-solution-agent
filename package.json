@@ -7,7 +7,8 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
-    "lint": "eslint src/"
+    "lint": "eslint src/",
+    "test": "vitest --run"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.82.0",
@@ -25,7 +26,9 @@
     "pdf-parse": "^1.1.1"
   },
   "devDependencies": {
-    "eslint": "^9.0.0"
+    "eslint": "^9.0.0",
+    "fast-check": "^4.7.0",
+    "vitest": "^4.1.4"
   },
   "engines": {
     "node": ">=20.0.0"

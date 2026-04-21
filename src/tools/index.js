@@ -65,11 +65,11 @@ export function getTools() {
    */
   async function handle(name, input) {
     // Jira
-    if (name === 'get_jira_ticket' || name === 'search_jira') {
+    if (name === 'get_jira_ticket' || name === 'search_jira' || name === 'add_jira_comment') {
       return handleJiraTool(name, input);
     }
     // Confluence
-    if (name === 'search_confluence' || name === 'get_confluence_page') {
+    if (name === 'search_confluence' || name === 'get_confluence_page' || name === 'create_confluence_page') {
       return handleConfluenceTool(name, input);
     }
     // Kapa docs

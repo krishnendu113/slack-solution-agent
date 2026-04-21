@@ -1,0 +1,10 @@
+{
+  "executionMode": "single",
+  "outputType": "assessment",
+  "downloadable": false,
+  "researchPhase": [],
+  "synthesisPhase": [],
+  "validation": {
+    "requiredJsonFields": ["elements"]
+  }
+}

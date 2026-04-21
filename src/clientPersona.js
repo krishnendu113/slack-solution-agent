@@ -31,6 +31,7 @@ export async function detectClientName(problemText) {
     const raw = await runSubAgent({
       systemPrompt: DETECT_SYSTEM_PROMPT,
       userContent: problemText.slice(0, 500),
+      operation: 'client-detect',
     });
     const parsed = JSON.parse(raw);
     if (!parsed.client) return null;
@@ -90,6 +91,7 @@ export async function updateClientPersona(slug, problemText, agentResponse) {
     const delta = await runSubAgent({
       systemPrompt: UPDATE_SYSTEM_PROMPT,
       userContent: `Prior context:\n${existing || '(none)'}\n\nNew conversation:\nUser: ${problemText.slice(0, 300)}\n\nAgent: ${agentResponse.slice(0, 800)}`,
+      operation: 'client-update',
     });
 
     const date = new Date().toISOString().slice(0, 10);

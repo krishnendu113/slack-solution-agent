@@ -1,0 +1,746 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>About — Capillary Solution Agent</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%230066cc'/><text x='16' y='22' font-family='system-ui,sans-serif' font-size='16' font-weight='700' fill='white' text-anchor='middle'>SA</text></svg>">
+  <script>(function(){ var t=localStorage.getItem('theme'); if(t==='dark') document.documentElement.setAttribute('data-theme','dark'); })();</script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #ffffff;
+      --bg-secondary: #f7f7f8;
+      --bg-card: #ffffff;
+      --text-primary: #1a1a1a;
+      --text-secondary: #4b5563;
+      --text-muted: #6b7280;
+      --border: #e5e7eb;
+      --accent: #0066cc;
+      --accent-light: #e0f0ff;
+      --green: #16a34a;
+      --green-bg: #f0fdf4;
+      --green-border: #bbf7d0;
+      --amber: #d97706;
+      --amber-bg: #fffbeb;
+      --amber-border: #fde68a;
+      --blue: #2563eb;
+      --blue-bg: #eff6ff;
+      --blue-border: #bfdbfe;
+      --purple: #7c3aed;
+      --purple-bg: #f5f3ff;
+      --purple-border: #ddd6fe;
+      --teal: #0d9488;
+      --teal-bg: #f0fdfa;
+      --teal-border: #99f6e4;
+      --red: #dc2626;
+      --red-bg: #fef2f2;
+      --red-border: #fecaca;
+      --nav-bg: rgba(255, 255, 255, 0.85);
+      --nav-border: #e5e7eb;
+      --code-bg: #f6f8fa;
+      --shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+      --shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.08);
+    }
+
+    [data-theme="dark"] {
+        --bg: #111827;
+        --bg-secondary: #1f2937;
+        --bg-card: #1f2937;
+        --text-primary: #f3f4f6;
+        --text-secondary: #9ca3af;
+        --text-muted: #6b7280;
+        --border: #374151;
+        --accent: #3b82f6;
+        --accent-light: #1e3a5f;
+        --green: #34d399;
+        --green-bg: #064e3b;
+        --green-border: #065f46;
+        --amber: #fbbf24;
+        --amber-bg: #78350f;
+        --amber-border: #92400e;
+        --blue: #60a5fa;
+        --blue-bg: #1e3a5f;
+        --blue-border: #1e40af;
+        --purple: #a78bfa;
+        --purple-bg: #2e1065;
+        --purple-border: #3b0764;
+        --teal: #2dd4bf;
+        --teal-bg: #134e4a;
+        --teal-border: #115e59;
+        --red: #f87171;
+        --red-bg: #7f1d1d;
+        --red-border: #991b1b;
+        --nav-bg: rgba(17, 24, 39, 0.9);
+        --nav-border: #374151;
+        --code-bg: #1e293b;
+        --shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+        --shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.4);
+    }
+
+    html {
+      scroll-behavior: smooth;
+      scroll-padding-top: 72px;
+    }
+
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text-primary);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── Navigation ── */
+    .nav {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 56px;
+      background: var(--nav-bg);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--nav-border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      z-index: 100;
+    }
+
+    .nav-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text-primary);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .nav-logo {
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+      background: var(--accent);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .nav-back {
+      font-size: 13px;
+      color: var(--text-muted);
+      text-decoration: none;
+      cursor: pointer;
+      transition: color 0.15s;
+    }
+
+    .nav-back:hover {
+      color: var(--accent);
+    }
+
+    .nav-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .theme-toggle {
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 5px 10px;
+      cursor: pointer;
+      font-size: 15px;
+      color: var(--text-secondary);
+      transition: background 0.15s, border-color 0.15s;
+      line-height: 1;
+    }
+
+    .theme-toggle:hover {
+      background: var(--bg-secondary);
+      border-color: var(--accent);
+    }
+
+    /* ── Layout ── */
+    .page {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 80px 24px 64px;
+    }
+
+    section {
+      margin-bottom: 56px;
+    }
+
+    /* ── Hero ── */
+    .hero {
+      text-align: center;
+      padding: 48px 0 40px;
+    }
+
+    .hero h1 {
+      font-size: 36px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      line-height: 1.2;
+      margin-bottom: 12px;
+    }
+
+    .hero .subtitle {
+      font-size: 17px;
+      color: var(--text-secondary);
+      max-width: 480px;
+      margin: 0 auto 24px;
+    }
+
+    .badges {
+      display: flex;
+      gap: 8px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 12px;
+      font-weight: 500;
+      padding: 4px 12px;
+      border-radius: 20px;
+      border: 1px solid;
+    }
+
+    .badge.green { color: var(--green); background: var(--green-bg); border-color: var(--green-border); }
+    .badge.blue { color: var(--blue); background: var(--blue-bg); border-color: var(--blue-border); }
+    .badge.purple { color: var(--purple); background: var(--purple-bg); border-color: var(--purple-border); }
+    .badge.amber { color: var(--amber); background: var(--amber-bg); border-color: var(--amber-border); }
+
+    /* ── Section headings ── */
+    h2 {
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      margin-bottom: 16px;
+      color: var(--text-primary);
+    }
+
+    h3 {
+      font-size: 15px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      color: var(--text-primary);
+    }
+
+    p {
+      color: var(--text-secondary);
+      margin-bottom: 12px;
+    }
+
+    p:last-child {
+      margin-bottom: 0;
+    }
+
+    /* ── Cards ── */
+    .card-grid {
+      display: grid;
+      gap: 12px;
+    }
+
+    .card-grid.cols-2 {
+      grid-template-columns: 1fr 1fr;
+    }
+
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px;
+      box-shadow: var(--shadow);
+    }
+
+    .card h3 {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .card p {
+      font-size: 14px;
+    }
+
+    /* ── Lists ── */
+    .feature-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .feature-list li {
+      display: flex;
+      gap: 10px;
+      align-items: baseline;
+      font-size: 14px;
+      color: var(--text-secondary);
+      line-height: 1.6;
+    }
+
+    .feature-list li::before {
+      content: '→';
+      color: var(--accent);
+      font-weight: 600;
+      flex-shrink: 0;
+    }
+
+    /* ── Pipeline / flow ── */
+    .pipeline {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      font-size: 13px;
+    }
+
+    .pipeline-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .pipeline-step {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 6px 14px;
+      font-weight: 500;
+      white-space: nowrap;
+    }
+
+    .pipeline-step.highlight {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: var(--accent-light);
+    }
+
+    .pipeline-arrow {
+      color: var(--text-muted);
+      font-size: 14px;
+    }
+
+    .pipeline-label {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+
+    /* ── Tool table ── */
+    .tool-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+
+    .tool-table th,
+    .tool-table td {
+      text-align: left;
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .tool-table th {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      background: var(--bg-secondary);
+    }
+
+    .tool-table td {
+      color: var(--text-secondary);
+    }
+
+    .tool-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .tool-table code {
+      font-size: 12px;
+      background: var(--code-bg);
+      padding: 2px 6px;
+      border-radius: 4px;
+      color: var(--accent);
+      font-family: 'SF Mono', 'Fira Code', monospace;
+    }
+
+    /* ── Model rows ── */
+    .model-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .model-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 16px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 13px;
+    }
+
+    .model-row .model-name {
+      font-weight: 600;
+      min-width: 80px;
+      flex-shrink: 0;
+    }
+
+    .model-row .model-task {
+      color: var(--text-secondary);
+      flex: 1;
+    }
+
+    /* ── Roadmap ── */
+    .roadmap-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .roadmap-item {
+      display: flex;
+      gap: 14px;
+      align-items: flex-start;
+      padding: 16px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      box-shadow: var(--shadow);
+    }
+
+    .roadmap-num {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--accent);
+      background: var(--accent-light);
+      border-radius: 6px;
+      width: 28px;
+      height: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .roadmap-item h3 {
+      margin-bottom: 4px;
+    }
+
+    .roadmap-item p {
+      font-size: 13px;
+      margin: 0;
+    }
+
+    /* ── Divider ── */
+    .divider {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 0 0 56px;
+    }
+
+    /* ── Footer ── */
+    .footer {
+      text-align: center;
+      padding: 32px 0;
+      border-top: 1px solid var(--border);
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 640px) {
+      .hero h1 { font-size: 28px; }
+      .hero .subtitle { font-size: 15px; }
+      .card-grid.cols-2 { grid-template-columns: 1fr; }
+      .page { padding: 72px 16px 48px; }
+      .pipeline-row { gap: 4px; }
+      .pipeline-step { font-size: 12px; padding: 4px 10px; }
+      .tool-table { font-size: 13px; }
+      .tool-table th, .tool-table td { padding: 8px 10px; }
+      .model-row { flex-wrap: wrap; gap: 6px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Navigation ── -->
+<nav class="nav">
+  <div class="nav-title">
+    <div class="nav-logo">SA</div>
+    Capillary Solution Agent
+  </div>
+  <div class="nav-right">
+    <a class="nav-back" onclick="goBack()" role="button" tabindex="0">← Back</a>
+    <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Toggle dark/light mode">🌙</button>
+  </div>
+</nav>
+
+<div class="page">
+
+  <!-- ── Hero ── -->
+  <section class="hero">
+    <h1>Capillary Solution Agent</h1>
+    <p class="subtitle">AI-powered feasibility assessment for the Customer Success team</p>
+    <div class="badges">
+      <span class="badge green">● Production</span>
+      <span class="badge blue">Anthropic Claude</span>
+      <span class="badge purple">Multi-user Auth</span>
+      <span class="badge amber">LangGraph</span>
+    </div>
+  </section>
+
+  <hr class="divider">
+
+  <!-- ── What it does ── -->
+  <section>
+    <h2>What it does</h2>
+    <ul class="feature-list">
+      <li>CS engineers submit Jira tickets, describe client requirements, or upload documents</li>
+      <li>Agent searches Jira, Confluence, Kapa docs, and docs.capillarytech.com for precedents and documentation</li>
+      <li>Returns a structured feasibility assessment: Problem → Verdict → Approach → Complexity → References → Open Questions</li>
+      <li>Flags for SA escalation when the request exceeds routine evaluation scope</li>
+    </ul>
+  </section>
+
+  <!-- ── Architecture ── -->
+  <section>
+    <h2>Architecture</h2>
+    <p>Web UI built on Express with SSE streaming. The backend runs a LangGraph state machine that routes requests through a multi-step pipeline.</p>
+
+    <h3 style="margin-top: 20px;">Request pipeline</h3>
+    <div class="pipeline" style="margin-bottom: 20px;">
+      <div class="pipeline-row">
+        <span class="pipeline-step highlight">classify</span>
+        <span class="pipeline-arrow">→</span>
+        <span class="pipeline-step highlight">loadSkills</span>
+        <span class="pipeline-arrow">→</span>
+        <span class="pipeline-step highlight">skillRouter</span>
+      </div>
+      <div class="pipeline-row" style="margin-left: 24px;">
+        <span class="pipeline-label">single-mode:</span>
+        <span class="pipeline-step">research</span>
+        <span class="pipeline-arrow">→</span>
+        <span class="pipeline-step">validate</span>
+      </div>
+      <div class="pipeline-row" style="margin-left: 24px;">
+        <span class="pipeline-label">multi-node:</span>
+        <span class="pipeline-step">researchFanOut</span>
+        <span class="pipeline-arrow">→</span>
+        <span class="pipeline-step">skillValidate</span>
+      </div>
+    </div>
+
+    <div class="card-grid cols-2">
+      <div class="card">
+        <h3>Single-mode path</h3>
+        <p>Standard feasibility assessments. One Sonnet streaming call handles research and synthesis in a multi-turn agentic loop.</p>
+      </div>
+      <div class="card">
+        <h3>Multi-node path</h3>
+        <p>SDDs and gap analyses. Parallel research across tool categories, then parallel section writing — each section by the right model.</p>
+      </div>
+      <div class="card">
+        <h3>Auth</h3>
+        <p>Multi-user with bcrypt + express-session. Google and Microsoft SSO supported. Session-based, cookie-secured.</p>
+      </div>
+      <div class="card">
+        <h3>Client persona</h3>
+        <p>Auto-detected from problem text and injected into the system prompt so responses are contextualised to the client's stack.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Skills system ── -->
+  <section>
+    <h2>Skills system</h2>
+    <p>Skills are prompt bundles in <code>skills/</code> folders, not code. Adding a skill means creating a folder and one line in <code>registry.json</code> — zero JS changes.</p>
+
+    <div class="card-grid" style="margin-top: 16px;">
+      <div class="card">
+        <h3>🎯 cr-evaluator</h3>
+        <p>Always-on feasibility rubric. Loaded on every request — defines OOTB/Config/Custom/Not Feasible verdicts, module map, and complexity scoring.</p>
+      </div>
+      <div class="card">
+        <h3>📄 capillary-sdd-writer</h3>
+        <p>Generates Solution Design Documents. Multi-node execution with parallel research and section writing. Output delivered as a downloadable file.</p>
+      </div>
+      <div class="card">
+        <h3>📊 solution-gap-analyzer</h3>
+        <p>BRD gap analysis with scoring. Multi-node execution. Compares client requirements against platform capabilities and scores each gap.</p>
+      </div>
+      <div class="card">
+        <h3>🖼️ excalidraw-diagram</h3>
+        <p>Visual architecture diagrams. Generates Excalidraw JSON for solution architecture visualisation.</p>
+      </div>
+    </div>
+
+    <p style="margin-top: 16px;">Skills have manifests (<code>manifest.json</code>) declaring execution mode, research phases, synthesis sections, and validation rules. Document-class skills deliver output as downloadable files, not raw chat text.</p>
+  </section>
+
+  <!-- ── Research tools ── -->
+  <section>
+    <h2>Research tools</h2>
+    <div class="card" style="overflow-x: auto;">
+      <table class="tool-table">
+        <thead>
+          <tr>
+            <th>Source</th>
+            <th>Tools</th>
+            <th>Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Jira</strong></td>
+            <td><code>get_jira_ticket</code>, <code>search_jira</code>, <code>add_jira_comment</code></td>
+            <td>Fetches tickets, searches by keyword, posts comments. ADF → plain text conversion.</td>
+          </tr>
+          <tr>
+            <td><strong>Confluence</strong></td>
+            <td><code>search_confluence</code>, <code>get_confluence_page</code>, <code>create_confluence_page</code></td>
+            <td>Full-text search, page retrieval, page creation. Circuit-breaker retry logic.</td>
+          </tr>
+          <tr>
+            <td><strong>Kapa Docs</strong></td>
+            <td><code>search_kapa_docs</code></td>
+            <td>MCP protocol — semantic search over Capillary documentation. Degrades gracefully if unconfigured.</td>
+          </tr>
+          <tr>
+            <td><strong>Web Search</strong></td>
+            <td><code>search_docs_site</code></td>
+            <td>Sitemap-based search of docs.capillarytech.com. No external API — scores URLs by keyword overlap, fetches top pages.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ── Model strategy ── -->
+  <section>
+    <h2>Model strategy</h2>
+    <p>Every operation uses the cheapest model that can do the job correctly. Sonnet tokens are spent only on tasks that require multi-source reasoning.</p>
+
+    <div class="model-list" style="margin-top: 16px;">
+      <div class="model-row">
+        <span class="badge purple" style="flex-shrink:0">Sonnet 4</span>
+        <span class="model-name">Synthesis</span>
+        <span class="model-task">Main agentic loop (streaming), reasoning sections in document skills</span>
+      </div>
+      <div class="model-row">
+        <span class="badge blue" style="flex-shrink:0">Haiku 4.5</span>
+        <span class="model-name">Classification</span>
+        <span class="model-task">Request classification, skill selection, tool result summarisation, structural sections, escalation summary</span>
+      </div>
+    </div>
+
+    <p style="margin-top: 16px;"><code>runSubAgent</code> enforces model validation — only Sonnet 4 and Haiku 4.5 are allowed. <code>MAX_AGENT_TOKENS</code> applies only to the Sonnet streaming call.</p>
+  </section>
+
+  <!-- ── Deployment ── -->
+  <section>
+    <h2>Deployment</h2>
+    <ul class="feature-list">
+      <li>Railway auto-deploy from GitHub <code>main</code> branch</li>
+      <li>Node.js 20+, ESM modules throughout</li>
+      <li>All configuration via environment variables</li>
+      <li>JSON file persistence (database migration planned)</li>
+    </ul>
+  </section>
+
+  <!-- ── What's next ── -->
+  <section>
+    <h2>What's next</h2>
+    <div class="roadmap-list">
+      <div class="roadmap-item">
+        <div class="roadmap-num">1</div>
+        <div>
+          <h3>Database persistence</h3>
+          <p>MongoDB or PostgreSQL for conversations, users, and client personas. Replace JSON file store.</p>
+        </div>
+      </div>
+      <div class="roadmap-item">
+        <div class="roadmap-num">2</div>
+        <div>
+          <h3>Context compaction</h3>
+          <p>Summarise older messages in long conversations to stay within token limits without losing context.</p>
+        </div>
+      </div>
+      <div class="roadmap-item">
+        <div class="roadmap-num">3</div>
+        <div>
+          <h3>Dynamic tool/skill loading</h3>
+          <p>Load tools and skills based on intent classification rather than static registry matching.</p>
+        </div>
+      </div>
+      <div class="roadmap-item">
+        <div class="roadmap-num">4</div>
+        <div>
+          <h3>Off-topic filtering</h3>
+          <p>Detect and gracefully decline requests outside the agent's domain before spending tokens on research.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<!-- ── Footer ── -->
+<footer class="footer">
+  Capillary Technologies — Customer Success Engineering
+</footer>
+
+<script>
+  // Theme toggle — shared with chat page via localStorage
+  function toggleTheme() {
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    if (isDark) {
+      document.documentElement.removeAttribute('data-theme');
+      localStorage.setItem('theme', 'light');
+      document.getElementById('themeToggle').textContent = '🌙';
+    } else {
+      document.documentElement.setAttribute('data-theme', 'dark');
+      localStorage.setItem('theme', 'dark');
+      document.getElementById('themeToggle').textContent = '☀️';
+    }
+  }
+  // Init toggle button state
+  (function() {
+    if (localStorage.getItem('theme') === 'dark') document.getElementById('themeToggle').textContent = '☀️';
+  })();
+
+  function goBack() {
+    try {
+      const referrer = document.referrer;
+      if (referrer && new URL(referrer).origin === window.location.origin) {
+        history.back();
+        return;
+      }
+    } catch (e) { /* invalid referrer URL, fall through */ }
+    window.location.href = '/';
+  }
+</script>
+
+</body>
+</html>

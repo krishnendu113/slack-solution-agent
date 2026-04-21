@@ -102,6 +102,11 @@
       flex-shrink: 0;
     }
     .chat-title { font-size: 14px; font-weight: 600; color: var(--text-primary); }
+    .about-link {
+      font-size: 11px; color: var(--accent); text-decoration: none;
+      opacity: 0.7; transition: opacity 0.2s, transform 0.2s; display: inline-block;
+    }
+    .about-link:hover { opacity: 1; transform: translateX(3px); text-decoration: underline; }
     .theme-toggle {
       background: none; border: 1px solid var(--border); border-radius: 8px;
       padding: 5px 10px; cursor: pointer; font-size: 15px;
@@ -282,6 +287,25 @@
     .download-btn { background: rgba(0,102,204,0.1); color: var(--accent); border: none; border-radius: 4px; padding: 3px 10px; cursor: pointer; font-size: 12px; font-weight: 500; font-family: inherit; }
     .download-btn:hover { background: rgba(0,102,204,0.2); }
 
+    /* Download card (document_ready) */
+    .download-card {
+      display: flex; align-items: center; gap: 14px;
+      padding: 14px 18px; margin: 12px 0;
+      background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius);
+      transition: border-color 0.15s;
+    }
+    .download-card:hover { border-color: var(--accent); }
+    .download-card-icon { font-size: 28px; flex-shrink: 0; }
+    .download-card-info { flex: 1; min-width: 0; }
+    .download-card-filename { font-size: 14px; font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .download-card-size { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+    .download-card-btn {
+      padding: 8px 16px; background: var(--accent); color: white; border: none; border-radius: 8px;
+      cursor: pointer; font-size: 13px; font-weight: 500; font-family: inherit;
+      text-decoration: none; white-space: nowrap; flex-shrink: 0; transition: background 0.15s;
+    }
+    .download-card-btn:hover { background: var(--accent-hover); }
+
     /* File upload chips */
     .file-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; max-width: 800px; margin: 0 auto 8px; padding: 0 24px; }
     .file-chips:empty { display: none; }
@@ -324,7 +348,10 @@
   <main class="main">
     <!-- D1/D2: Chat header with title and dark mode toggle -->
     <header class="chat-header">
-      <span class="chat-title">Capillary Solution Agent</span>
+      <div style="display:flex;flex-direction:column">
+        <span class="chat-title">Capillary Solution Agent</span>
+        <a href="/about.html" class="about-link" target="_blank">Learn how this agent works →</a>
+      </div>
       <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Toggle dark/light mode">🌙</button>
     </header>
 
@@ -457,6 +484,7 @@ async function api(method, path, body) {
   const opts = { method, headers: {} };
   if (body) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
   const res = await fetch(`/api${path}`, opts);
+  if (res.status === 401) { window.location.href = '/login.html'; return; }
   if (!res.ok) { const err = await res.json().catch(() => ({ error: res.statusText })); throw new Error(err.error || 'Request failed'); }
   return res;
 }
@@ -651,6 +679,7 @@ async function sendMessage() {
     }
 
     const response = await fetch(`/api/conversations/${currentConvId}/messages`, fetchOpts);
+    if (response.status === 401) { window.location.href = '/login.html'; return; }
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
@@ -709,10 +738,15 @@ async function sendMessage() {
       const body = document.createElement('div');
       body.className = 'tool-group-body collapsed';
       pills.forEach(p => body.appendChild(p));
-      body.style.maxHeight = body.scrollHeight + 'px';
       group.appendChild(header);
       group.appendChild(body);
-      header.onclick = () => { header.classList.toggle('collapsed'); body.classList.toggle('collapsed'); };
+      // Start collapsed — let CSS handle the collapsed state, set explicit maxHeight for toggle
+      body.style.maxHeight = '0';
+      header.onclick = () => {
+        const isCollapsed = header.classList.toggle('collapsed');
+        body.classList.toggle('collapsed');
+        body.style.maxHeight = isCollapsed ? '0' : body.scrollHeight + 'px';
+      };
     }
     function getStreamingBubble() {
       if (lastBlockType === 'tool' || !streamingBubble) {
@@ -821,6 +855,17 @@ async function sendMessage() {
             } else {
               appendMessageToUI(data);
             }
+
+          } else if (eventType === 'document_ready') {
+            ensureMsgContainer();
+            const { filename, sizeBytes, downloadToken } = data;
+            const sizeKB = (sizeBytes / 1024).toFixed(1);
+            const card = document.createElement('div');
+            card.className = 'download-card';
+            card.innerHTML = `<span class="download-card-icon">📄</span><div class="download-card-info"><div class="download-card-filename">${escapeHtml(filename)}</div><div class="download-card-size">${sizeKB} KB</div></div><a class="download-card-btn" href="/api/documents/${encodeURIComponent(downloadToken)}" download="${escapeHtml(filename)}">Download</a>`;
+            if (activityBar) streamingMsgDiv.insertBefore(card, activityBar);
+            else streamingMsgDiv.appendChild(card);
+            scrollToBottom();
 
           } else if (eventType === 'error') {
             if (renderTimeout) { clearTimeout(renderTimeout); renderTimeout = null; }

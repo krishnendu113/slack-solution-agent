@@ -9,6 +9,16 @@ const require = createRequire(import.meta.url);
 const SKILLS_DIR = path.join(__dirname, '../skills');
 const TEXT_EXTENSIONS = new Set(['.md', '.txt', '.json', '.jsonl']);
 
+const DEFAULT_MANIFEST = {
+  executionMode: 'single',
+  outputType: 'assessment',
+  downloadable: false,
+  researchPhase: [],
+  synthesisPhase: [],
+  fileMapping: {},
+  validation: {},
+};
+
 // Lazy-load registry so tests can mock it
 let _registry = null;
 function getRegistry() {
@@ -16,6 +26,27 @@ function getRegistry() {
     _registry = require(path.join(SKILLS_DIR, 'registry.json'));
   }
   return _registry;
+}
+
+/**
+ * Loads and parses the manifest.json for a skill folder.
+ * Returns a default single-mode manifest if the file is absent or invalid.
+ *
+ * @param {string} skillFolder - Absolute path to the skill folder
+ * @returns {Promise<object>} Parsed manifest or DEFAULT_MANIFEST
+ */
+export async function loadManifest(skillFolder) {
+  const manifestPath = path.join(skillFolder, 'manifest.json');
+  try {
+    const raw = await fs.readFile(manifestPath, 'utf-8');
+    const parsed = JSON.parse(raw);
+    return { ...DEFAULT_MANIFEST, ...parsed };
+  } catch (err) {
+    if (err.code !== 'ENOENT') {
+      console.warn(`[skillLoader] manifest.json parse error for ${skillFolder}: ${err.message} — using single mode`);
+    }
+    return { ...DEFAULT_MANIFEST };
+  }
 }
 
 /**
@@ -38,6 +69,7 @@ async function collectSkillFiles(dirPath, prefix = '') {
   const files = [];
 
   for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+    if (entry.name === 'manifest.json') continue; // manifests are loaded separately, not concatenated into prompt
     const fullPath = path.join(dirPath, entry.name);
     const label = prefix ? `${prefix}/${entry.name}` : entry.name;
 
@@ -148,16 +180,72 @@ export async function loadSkillsForProblem(problemText, semanticMatches = null) 
   const matched = [...alwaysOn, ...keywordOrSemantic];
 
   if (!matched.length) {
-    return { skillIds: [], prompt: '', matched: [] };
+    return { skillIds: [], prompt: '', matched: [], manifests: new Map() };
   }
 
-  const loaded = await Promise.all(matched.map(s => loadSkill(s.id)));
+  const [loaded, manifestEntries] = await Promise.all([
+    Promise.all(matched.map(s => loadSkill(s.id))),
+    Promise.all(matched.map(async s => {
+      const folderPath = path.join(SKILLS_DIR, s.folder);
+      const manifest = await loadManifest(folderPath);
+      return [s.id, manifest];
+    })),
+  ]);
+  const manifests = new Map(manifestEntries);
 
   return {
     skillIds: matched.map(s => s.id),
     prompt: '\n\n' + loaded.join('\n\n════════════════════════════════════════\n\n'),
     matched,
+    manifests,
   };
+}
+
+/**
+ * Loads specific files from a skill folder and assembles them into a prompt block.
+ * SKILL.md is always included first regardless of whether it's in fileNames.
+ * Used by Section_Writers in multi-node mode to load only the reference files
+ * declared in the manifest's fileMapping.
+ *
+ * @param {string} skillId - Skill ID from registry
+ * @param {string[]} fileNames - File names to load (relative to skill folder)
+ * @returns {Promise<string>} Assembled prompt block
+ */
+export async function loadSkillFiles(skillId, fileNames) {
+  const registry = getRegistry();
+  const skill = registry.skills.find(s => s.id === skillId);
+  if (!skill) throw new Error(`Unknown skill: "${skillId}"`);
+
+  const folderPath = path.join(SKILLS_DIR, skill.folder);
+
+  // Always include SKILL.md first, deduplicate
+  const filesToLoad = ['SKILL.md', ...fileNames.filter(f => f !== 'SKILL.md')];
+  const uniqueFiles = [...new Set(filesToLoad)];
+
+  const sections = [];
+  for (const fileName of uniqueFiles) {
+    const fullPath = path.join(folderPath, fileName);
+    try {
+      const content = await fs.readFile(fullPath, 'utf-8');
+      sections.push(`### [${fileName}]\n\n${content.trim()}`);
+    } catch (err) {
+      if (err.code === 'ENOENT') {
+        console.warn(`[skillLoader] fileMapping references missing file: ${skillId}/${fileName} — skipping`);
+      } else {
+        console.warn(`[skillLoader] Error reading ${skillId}/${fileName}: ${err.message} — skipping`);
+      }
+    }
+  }
+
+  console.log(`[skillLoader] loadSkillFiles(${skillId}): loaded ${sections.length}/${uniqueFiles.length} files`);
+
+  return [
+    `## ═══ ACTIVE SKILL: ${skill.id} (section context) ═══`,
+    `> ${skill.description}`,
+    '',
+    sections.join('\n\n---\n\n'),
+    `## ═══ END SKILL: ${skill.id} ═══`,
+  ].join('\n');
 }
 
 /**
@@ -168,5 +256,6 @@ export function listSkills() {
     id: s.id,
     description: s.description,
     triggers: s.triggers,
+    alwaysLoad: s.alwaysLoad || false,
   }));
 }

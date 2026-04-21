@@ -7,6 +7,7 @@ import { runAgent, buildEscalationSummary, AgentError } from './orchestrator.js'
 import { upload, extractFileContent, buildAnthropicContent } from './fileHandler.js';
 import * as store from './store.js';
 import authRouter, { requireAuth, bootstrapAdminIfNeeded } from './auth.js';
+import { getDocument } from './documentStore.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -43,12 +44,24 @@ app.use(authRouter);
 
 // ─── Auth guard — protect everything except login page + auth endpoints ───────
 app.use((req, res, next) => {
-  const open = ['/login.html', '/api/auth/login', '/api/auth/logout', '/api/auth/me', '/api/auth/providers'];
+  const open = ['/login.html', '/about.html', '/api/auth/login', '/api/auth/logout', '/api/auth/me', '/api/auth/providers'];
   if (open.some(p => req.path === p || req.path.startsWith('/api/auth/'))) return next();
   return requireAuth(req, res, next);
 });
 
 app.use(express.static(path.join(__dirname, '../public')));
+
+// ─── API: Document download ──────────────────────────────────────────────────
+
+app.get('/api/documents/:downloadToken', (req, res) => {
+  const doc = getDocument(req.params.downloadToken);
+  if (!doc) {
+    return res.status(410).json({ error: 'Download link expired or not found. Regenerate the document.' });
+  }
+  res.setHeader('Content-Disposition', `attachment; filename="${doc.filename}"`);
+  res.setHeader('Content-Type', doc.contentType);
+  res.send(doc.content);
+});
 
 // ─── API: Conversations ──────────────────────────────────────────────────────
 
@@ -129,6 +142,7 @@ app.post('/api/conversations/:id/messages', upload.array('files', 5), async (req
       onToolStatus: async (info) => sendEvent('tool_status', info),
       onSkillActive: async (info) => sendEvent('skill_active', info),
       onPhase: async (name) => sendEvent('phase', { name }),
+      onDocumentReady: async (info) => sendEvent('document_ready', info),
     });
 
     let escalated = false;
@@ -152,12 +166,6 @@ app.post('/api/conversations/:id/messages', upload.array('files', 5), async (req
     sendEvent('error', { text: friendly });
     res.end();
   }
-});
-
-// ─── About / presentation page ───────────────────────────────────────────────
-
-app.get('/about', (_req, res) => {
-  res.sendFile(path.join(__dirname, 'about.html'));
 });
 
 // ─── SPA fallback ────────────────────────────────────────────────────────────

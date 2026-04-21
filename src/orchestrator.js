@@ -19,14 +19,6 @@ import { runSubAgent } from './subAgent.js';
 import { updateClientPersona } from './clientPersona.js';
 import { buildGraph } from './graph.js';
 
-// ─── SDK Client ───────────────────────────────────────────────────────────────
-
-let _client = null;
-function getClient() {
-  if (!_client) _client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-  return _client;
-}
-
 // ─── Friendly Error Messages ──────────────────────────────────────────────────
 
 export class AgentError extends Error {
@@ -86,6 +78,7 @@ async function classifyRequest(problemText) {
     const raw = await runSubAgent({
       systemPrompt: CLASSIFY_SYSTEM_PROMPT,
       userContent: problemText,
+      operation: 'classify',
     });
     const parsed = JSON.parse(raw);
     return {
@@ -213,7 +206,7 @@ When you receive a request:
 
 // ─── Main Agent Entry Point ───────────────────────────────────────────────────
 
-export async function runAgent({ problemText, history, onStatus, onToken, onToolStatus, onSkillActive, onPhase }) {
+export async function runAgent({ problemText, history, onStatus, onToken, onToolStatus, onSkillActive, onPhase, onDocumentReady }) {
   if (!process.env.ANTHROPIC_API_KEY) {
     throw new AgentError("No API key found. Add ANTHROPIC_API_KEY to .env.", 'ANTHROPIC_API_KEY not set');
   }
@@ -239,7 +232,7 @@ export async function runAgent({ problemText, history, onStatus, onToken, onTool
 
   // Delegate to LangGraph state machine
   const graph = buildGraph(
-    { onStatus, onToken, onToolStatus, onSkillActive, onPhase },
+    { onStatus, onToken, onToolStatus, onSkillActive, onPhase, onDocumentReady },
     BASE_SYSTEM_PROMPT
   );
 
@@ -274,16 +267,13 @@ export async function runAgent({ problemText, history, onStatus, onToken, onTool
 
 export async function buildEscalationSummary({ problemText, history, agentResponse }) {
   try {
-    const anthropic = getClient();
-    const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 1000,
-      messages: [{
-        role: 'user',
-        content: `Summarise this CS escalation for the SA team in under 400 words. Include: problem statement, what was researched, why SA is needed, suggested next steps.\n\nProblem: ${problemText}\nAgent response: ${agentResponse}\nTurns: ${history.length}`,
-      }],
+    return await runSubAgent({
+      systemPrompt: 'Summarise this CS escalation for the SA team in under 400 words. Include: problem statement, what was researched, why SA is needed, suggested next steps. Be concise and factual.',
+      userContent: `Problem: ${problemText}\nAgent response: ${agentResponse}\nTurns: ${history.length}`,
+      model: 'claude-haiku-4-5-20251001',
+      maxTokens: 1024,
+      operation: 'escalation-summary',
     });
-    return response.content.filter(b => b.type === 'text').map(b => b.text).join('\n');
   } catch {
     return `**Escalation**\n\n**Problem:** ${problemText}\n\n**Agent Assessment:** ${agentResponse}`;
   }
