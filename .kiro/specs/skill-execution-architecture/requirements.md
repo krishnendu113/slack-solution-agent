@@ -259,3 +259,35 @@ This feature replaces that approach with a structured execution architecture tha
    - `"nfrs"` → `["section-template.md"]`
 
 10. FILES not referenced by any `fileMapping` entry (e.g. `progress-tracker-template.md`, `persistence-guide.md`, `validate_api.py`) SHALL NOT be loaded in multi-node mode, saving tokens.
+
+---
+
+### Requirement 11: Lazy Skill Loading (Name + Description Only)
+
+**User Story:** As a system operator, I want skills loaded into the system prompt as lightweight summaries (name + description only) rather than full file content, so that the agent has visibility of all available skills in minimal context and can request full details only when needed.
+
+#### Acceptance Criteria
+
+1. WHEN skills are loaded into the system prompt, THE Skill_Loader SHALL inject only the skill ID and description for each matched skill — NOT the full `SKILL.md` content or reference files.
+
+2. THE Agent SHALL have access to a `get_skill_details` tool that accepts a `skill_id` parameter and returns the full `SKILL.md` content for that skill.
+
+3. THE Agent SHALL have access to a `get_skill_reference` tool that accepts `skill_id` and `filename` parameters and returns the content of a specific reference file from that skill's folder.
+
+4. WHEN the Agent determines it needs a skill's full instructions (e.g. to write an SDD or perform a gap analysis), it SHALL call `get_skill_details` to load the full content into its context.
+
+5. WHEN the Agent needs a specific reference file (e.g. `golden-path.md`, `scoring-engine.md`), it SHALL call `get_skill_reference` to load only that file.
+
+6. THE existing `activate_skill` tool SHALL be updated to return only the skill name and description (lightweight activation), consistent with the new loading approach.
+
+7. THE `list_skills` tool SHALL continue to return all registered skills with their IDs, descriptions, and triggers — unchanged.
+
+8. IN multi-node execution mode, THE Section_Writers SHALL continue to use `loadSkillFiles` with `fileMapping` to load reference files directly (no tool call needed) — lazy loading applies only to the single-mode path where the LLM decides what to load.
+
+9. THE lightweight skill summary injected into the system prompt SHALL follow this format per skill:
+   ```
+   Available skill: {id} — {description}
+   Use get_skill_details("{id}") to load full instructions when needed.
+   ```
+
+10. THIS change SHALL reduce the default system prompt size by removing the full skill content that was previously concatenated unconditionally for always-on skills like `cr-evaluator`.

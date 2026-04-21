@@ -11,486 +11,121 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
     :root {
-      --bg: #ffffff;
-      --bg-secondary: #f7f7f8;
-      --bg-card: #ffffff;
-      --text-primary: #1a1a1a;
-      --text-secondary: #4b5563;
-      --text-muted: #6b7280;
-      --border: #e5e7eb;
-      --accent: #0066cc;
-      --accent-light: #e0f0ff;
-      --green: #16a34a;
-      --green-bg: #f0fdf4;
-      --green-border: #bbf7d0;
-      --amber: #d97706;
-      --amber-bg: #fffbeb;
-      --amber-border: #fde68a;
-      --blue: #2563eb;
-      --blue-bg: #eff6ff;
-      --blue-border: #bfdbfe;
-      --purple: #7c3aed;
-      --purple-bg: #f5f3ff;
-      --purple-border: #ddd6fe;
-      --teal: #0d9488;
-      --teal-bg: #f0fdfa;
-      --teal-border: #99f6e4;
-      --red: #dc2626;
-      --red-bg: #fef2f2;
-      --red-border: #fecaca;
-      --nav-bg: rgba(255, 255, 255, 0.85);
-      --nav-border: #e5e7eb;
-      --code-bg: #f6f8fa;
-      --shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
-      --shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.08);
+      --bg: #ffffff; --bg-secondary: #f7f7f8; --bg-card: #ffffff;
+      --text-primary: #1a1a1a; --text-secondary: #4b5563; --text-muted: #6b7280;
+      --border: #e5e7eb; --accent: #0066cc; --accent-light: #e0f0ff;
+      --green: #16a34a; --green-bg: #f0fdf4; --green-border: #bbf7d0;
+      --amber: #d97706; --amber-bg: #fffbeb; --amber-border: #fde68a;
+      --blue: #2563eb; --blue-bg: #eff6ff; --blue-border: #bfdbfe;
+      --purple: #7c3aed; --purple-bg: #f5f3ff; --purple-border: #ddd6fe;
+      --teal: #0d9488; --teal-bg: #f0fdfa; --teal-border: #99f6e4;
+      --red: #dc2626; --nav-bg: rgba(255,255,255,0.85); --nav-border: #e5e7eb;
+      --code-bg: #f6f8fa; --shadow: 0 1px 3px rgba(0,0,0,0.06);
+      --connector: #cbd5e1;
     }
-
     [data-theme="dark"] {
-        --bg: #111827;
-        --bg-secondary: #1f2937;
-        --bg-card: #1f2937;
-        --text-primary: #f3f4f6;
-        --text-secondary: #9ca3af;
-        --text-muted: #6b7280;
-        --border: #374151;
-        --accent: #3b82f6;
-        --accent-light: #1e3a5f;
-        --green: #34d399;
-        --green-bg: #064e3b;
-        --green-border: #065f46;
-        --amber: #fbbf24;
-        --amber-bg: #78350f;
-        --amber-border: #92400e;
-        --blue: #60a5fa;
-        --blue-bg: #1e3a5f;
-        --blue-border: #1e40af;
-        --purple: #a78bfa;
-        --purple-bg: #2e1065;
-        --purple-border: #3b0764;
-        --teal: #2dd4bf;
-        --teal-bg: #134e4a;
-        --teal-border: #115e59;
-        --red: #f87171;
-        --red-bg: #7f1d1d;
-        --red-border: #991b1b;
-        --nav-bg: rgba(17, 24, 39, 0.9);
-        --nav-border: #374151;
-        --code-bg: #1e293b;
-        --shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-        --shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.4);
+      --bg: #111827; --bg-secondary: #1f2937; --bg-card: #1f2937;
+      --text-primary: #f3f4f6; --text-secondary: #9ca3af; --text-muted: #6b7280;
+      --border: #374151; --accent: #3b82f6; --accent-light: #1e3a5f;
+      --green: #34d399; --green-bg: #064e3b; --green-border: #065f46;
+      --amber: #fbbf24; --amber-bg: #78350f; --amber-border: #92400e;
+      --blue: #60a5fa; --blue-bg: #1e3a5f; --blue-border: #1e40af;
+      --purple: #a78bfa; --purple-bg: #2e1065; --purple-border: #3b0764;
+      --teal: #2dd4bf; --teal-bg: #134e4a; --teal-border: #115e59;
+      --red: #f87171; --nav-bg: rgba(17,24,39,0.9); --nav-border: #374151;
+      --code-bg: #1e293b; --shadow: 0 1px 3px rgba(0,0,0,0.3);
+      --connector: #4b5563;
     }
+    html { scroll-behavior: smooth; scroll-padding-top: 72px; }
+    body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--text-primary); line-height: 1.6; -webkit-font-smoothing: antialiased; }
 
-    html {
-      scroll-behavior: smooth;
-      scroll-padding-top: 72px;
-    }
+    .nav { position: fixed; top: 0; left: 0; right: 0; height: 56px; background: var(--nav-bg); backdrop-filter: blur(12px); border-bottom: 1px solid var(--nav-border); display: flex; align-items: center; justify-content: space-between; padding: 0 24px; z-index: 100; }
+    .nav-title { font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 10px; }
+    .nav-logo { width: 28px; height: 28px; border-radius: 6px; background: var(--accent); display: flex; align-items: center; justify-content: center; color: white; font-size: 12px; font-weight: 700; }
+    .nav-right { display: flex; align-items: center; gap: 12px; }
+    .nav-back { font-size: 13px; color: var(--text-muted); text-decoration: none; cursor: pointer; transition: color 0.15s; }
+    .nav-back:hover { color: var(--accent); }
+    .theme-toggle { background: none; border: 1px solid var(--border); border-radius: 8px; padding: 5px 10px; cursor: pointer; font-size: 15px; color: var(--text-secondary); transition: background 0.15s; line-height: 1; }
+    .theme-toggle:hover { background: var(--bg-secondary); border-color: var(--accent); }
 
-    body {
-      font-family: 'Inter', system-ui, -apple-system, sans-serif;
-      background: var(--bg);
-      color: var(--text-primary);
-      line-height: 1.6;
-      -webkit-font-smoothing: antialiased;
-    }
-
-    /* ── Navigation ── */
-    .nav {
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      height: 56px;
-      background: var(--nav-bg);
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
-      border-bottom: 1px solid var(--nav-border);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 0 24px;
-      z-index: 100;
-    }
-
-    .nav-title {
-      font-size: 15px;
-      font-weight: 600;
-      color: var(--text-primary);
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-
-    .nav-logo {
-      width: 28px;
-      height: 28px;
-      border-radius: 6px;
-      background: var(--accent);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: white;
-      font-size: 12px;
-      font-weight: 700;
-    }
-
-    .nav-back {
-      font-size: 13px;
-      color: var(--text-muted);
-      text-decoration: none;
-      cursor: pointer;
-      transition: color 0.15s;
-    }
-
-    .nav-back:hover {
-      color: var(--accent);
-    }
-
-    .nav-right {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-
-    .theme-toggle {
-      background: none;
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 5px 10px;
-      cursor: pointer;
-      font-size: 15px;
-      color: var(--text-secondary);
-      transition: background 0.15s, border-color 0.15s;
-      line-height: 1;
-    }
-
-    .theme-toggle:hover {
-      background: var(--bg-secondary);
-      border-color: var(--accent);
-    }
-
-    /* ── Layout ── */
-    .page {
-      max-width: 800px;
-      margin: 0 auto;
-      padding: 80px 24px 64px;
-    }
-
-    section {
-      margin-bottom: 56px;
-    }
-
-    /* ── Hero ── */
-    .hero {
-      text-align: center;
-      padding: 48px 0 40px;
-    }
-
-    .hero h1 {
-      font-size: 36px;
-      font-weight: 700;
-      letter-spacing: -0.02em;
-      line-height: 1.2;
-      margin-bottom: 12px;
-    }
-
-    .hero .subtitle {
-      font-size: 17px;
-      color: var(--text-secondary);
-      max-width: 480px;
-      margin: 0 auto 24px;
-    }
-
-    .badges {
-      display: flex;
-      gap: 8px;
-      justify-content: center;
-      flex-wrap: wrap;
-    }
-
-    .badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 5px;
-      font-size: 12px;
-      font-weight: 500;
-      padding: 4px 12px;
-      border-radius: 20px;
-      border: 1px solid;
-    }
-
+    .page { max-width: 820px; margin: 0 auto; padding: 80px 24px 64px; }
+    section { margin-bottom: 56px; }
+    .hero { text-align: center; padding: 48px 0 40px; }
+    .hero h1 { font-size: 36px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.2; margin-bottom: 12px; }
+    .hero .subtitle { font-size: 17px; color: var(--text-secondary); max-width: 520px; margin: 0 auto 24px; }
+    .badges { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+    .badge { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 500; padding: 4px 12px; border-radius: 20px; border: 1px solid; }
     .badge.green { color: var(--green); background: var(--green-bg); border-color: var(--green-border); }
     .badge.blue { color: var(--blue); background: var(--blue-bg); border-color: var(--blue-border); }
     .badge.purple { color: var(--purple); background: var(--purple-bg); border-color: var(--purple-border); }
     .badge.amber { color: var(--amber); background: var(--amber-bg); border-color: var(--amber-border); }
+    h2 { font-size: 22px; font-weight: 700; margin-bottom: 6px; }
+    h2 + .section-desc { font-size: 14px; color: var(--text-muted); margin-bottom: 20px; }
+    h3 { font-size: 15px; font-weight: 600; margin-bottom: 8px; }
+    p { color: var(--text-secondary); margin-bottom: 12px; }
+    p:last-child { margin-bottom: 0; }
+    code { font-size: 12px; background: var(--code-bg); padding: 2px 6px; border-radius: 4px; color: var(--accent); font-family: 'SF Mono', monospace; }
+    .divider { border: none; border-top: 1px solid var(--border); margin: 0 0 56px; }
+    .card-grid { display: grid; gap: 12px; }
+    .card-grid.cols-2 { grid-template-columns: 1fr 1fr; }
+    .card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 20px; box-shadow: var(--shadow); }
+    .card h3 { display: flex; align-items: center; gap: 8px; }
+    .card p { font-size: 14px; }
+    .feature-list { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+    .feature-list li { display: flex; gap: 10px; align-items: baseline; font-size: 14px; color: var(--text-secondary); line-height: 1.6; }
+    .feature-list li::before { content: '→'; color: var(--accent); font-weight: 600; flex-shrink: 0; }
+    .tool-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    .tool-table th, .tool-table td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--border); }
+    .tool-table th { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); background: var(--bg-secondary); }
+    .tool-table td { color: var(--text-secondary); }
+    .tool-table tr:last-child td { border-bottom: none; }
+    .tool-table code { font-size: 12px; }
+    .model-list { display: flex; flex-direction: column; gap: 8px; }
+    .model-row { display: flex; align-items: center; gap: 12px; padding: 12px 16px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 8px; font-size: 13px; }
+    .model-row .model-name { font-weight: 600; min-width: 80px; flex-shrink: 0; }
+    .model-row .model-task { color: var(--text-secondary); flex: 1; }
+    .roadmap-list { display: flex; flex-direction: column; gap: 10px; }
+    .roadmap-item { display: flex; gap: 14px; align-items: flex-start; padding: 16px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow); }
+    .roadmap-num { font-size: 11px; font-weight: 700; color: var(--accent); background: var(--accent-light); border-radius: 6px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .roadmap-item h3 { margin-bottom: 4px; }
+    .roadmap-item p { font-size: 13px; margin: 0; }
+    .footer { text-align: center; padding: 32px 0; border-top: 1px solid var(--border); font-size: 13px; color: var(--text-muted); }
 
-    /* ── Section headings ── */
-    h2 {
-      font-size: 22px;
-      font-weight: 700;
-      letter-spacing: -0.01em;
-      margin-bottom: 16px;
-      color: var(--text-primary);
-    }
+    /* ── Flow Diagram ── */
+    .diagram { margin: 24px 0; overflow-x: auto; }
+    .diagram-row { display: flex; align-items: center; gap: 0; margin-bottom: 12px; flex-wrap: nowrap; }
+    .diagram-row.indented { margin-left: 40px; }
+    .d-node { padding: 10px 16px; border-radius: 8px; font-size: 13px; font-weight: 600; border: 2px solid var(--border); background: var(--bg-card); white-space: nowrap; transition: transform 0.15s, box-shadow 0.15s; cursor: default; text-align: center; box-shadow: var(--shadow); }
+    .d-node:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+    .d-node small { display: block; font-size: 10px; font-weight: 400; color: var(--text-muted); margin-top: 2px; }
+    .d-node.blue { border-color: var(--blue-border); background: var(--blue-bg); color: var(--blue); }
+    .d-node.purple { border-color: var(--purple-border); background: var(--purple-bg); color: var(--purple); }
+    .d-node.green { border-color: var(--green-border); background: var(--green-bg); color: var(--green); }
+    .d-node.amber { border-color: var(--amber-border); background: var(--amber-bg); color: var(--amber); }
+    .d-node.teal { border-color: var(--teal-border); background: var(--teal-bg); color: var(--teal); }
+    .d-arrow { color: var(--connector); font-size: 18px; margin: 0 6px; flex-shrink: 0; }
+    .d-branch { display: flex; flex-direction: column; gap: 8px; margin-left: 12px; padding-left: 16px; border-left: 2px solid var(--connector); }
+    .d-label { font-size: 11px; font-weight: 600; color: var(--text-muted); padding: 2px 8px; border-radius: 4px; background: var(--bg-secondary); margin-right: 8px; white-space: nowrap; }
+    .opt-list { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+    .opt-item { display: flex; gap: 12px; align-items: flex-start; padding: 14px 16px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 8px; font-size: 13px; }
+    .opt-icon { font-size: 18px; flex-shrink: 0; }
+    .opt-item strong { color: var(--text-primary); }
+    .opt-item span { color: var(--text-secondary); }
 
-    h3 {
-      font-size: 15px;
-      font-weight: 600;
-      margin-bottom: 8px;
-      color: var(--text-primary);
-    }
-
-    p {
-      color: var(--text-secondary);
-      margin-bottom: 12px;
-    }
-
-    p:last-child {
-      margin-bottom: 0;
-    }
-
-    /* ── Cards ── */
-    .card-grid {
-      display: grid;
-      gap: 12px;
-    }
-
-    .card-grid.cols-2 {
-      grid-template-columns: 1fr 1fr;
-    }
-
-    .card {
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 20px;
-      box-shadow: var(--shadow);
-    }
-
-    .card h3 {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .card p {
-      font-size: 14px;
-    }
-
-    /* ── Lists ── */
-    .feature-list {
-      list-style: none;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-    }
-
-    .feature-list li {
-      display: flex;
-      gap: 10px;
-      align-items: baseline;
-      font-size: 14px;
-      color: var(--text-secondary);
-      line-height: 1.6;
-    }
-
-    .feature-list li::before {
-      content: '→';
-      color: var(--accent);
-      font-weight: 600;
-      flex-shrink: 0;
-    }
-
-    /* ── Pipeline / flow ── */
-    .pipeline {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-      font-size: 13px;
-    }
-
-    .pipeline-row {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      flex-wrap: wrap;
-    }
-
-    .pipeline-step {
-      background: var(--bg-secondary);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      padding: 6px 14px;
-      font-weight: 500;
-      white-space: nowrap;
-    }
-
-    .pipeline-step.highlight {
-      border-color: var(--accent);
-      color: var(--accent);
-      background: var(--accent-light);
-    }
-
-    .pipeline-arrow {
-      color: var(--text-muted);
-      font-size: 14px;
-    }
-
-    .pipeline-label {
-      font-size: 11px;
-      color: var(--text-muted);
-      font-weight: 500;
-    }
-
-    /* ── Tool table ── */
-    .tool-table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 14px;
-    }
-
-    .tool-table th,
-    .tool-table td {
-      text-align: left;
-      padding: 10px 14px;
-      border-bottom: 1px solid var(--border);
-    }
-
-    .tool-table th {
-      font-size: 11px;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      color: var(--text-muted);
-      background: var(--bg-secondary);
-    }
-
-    .tool-table td {
-      color: var(--text-secondary);
-    }
-
-    .tool-table tr:last-child td {
-      border-bottom: none;
-    }
-
-    .tool-table code {
-      font-size: 12px;
-      background: var(--code-bg);
-      padding: 2px 6px;
-      border-radius: 4px;
-      color: var(--accent);
-      font-family: 'SF Mono', 'Fira Code', monospace;
-    }
-
-    /* ── Model rows ── */
-    .model-list {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-
-    .model-row {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      padding: 12px 16px;
-      background: var(--bg-secondary);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      font-size: 13px;
-    }
-
-    .model-row .model-name {
-      font-weight: 600;
-      min-width: 80px;
-      flex-shrink: 0;
-    }
-
-    .model-row .model-task {
-      color: var(--text-secondary);
-      flex: 1;
-    }
-
-    /* ── Roadmap ── */
-    .roadmap-list {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-    }
-
-    .roadmap-item {
-      display: flex;
-      gap: 14px;
-      align-items: flex-start;
-      padding: 16px;
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      box-shadow: var(--shadow);
-    }
-
-    .roadmap-num {
-      font-size: 11px;
-      font-weight: 700;
-      color: var(--accent);
-      background: var(--accent-light);
-      border-radius: 6px;
-      width: 28px;
-      height: 28px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      flex-shrink: 0;
-    }
-
-    .roadmap-item h3 {
-      margin-bottom: 4px;
-    }
-
-    .roadmap-item p {
-      font-size: 13px;
-      margin: 0;
-    }
-
-    /* ── Divider ── */
-    .divider {
-      border: none;
-      border-top: 1px solid var(--border);
-      margin: 0 0 56px;
-    }
-
-    /* ── Footer ── */
-    .footer {
-      text-align: center;
-      padding: 32px 0;
-      border-top: 1px solid var(--border);
-      font-size: 13px;
-      color: var(--text-muted);
-    }
-
-    /* ── Responsive ── */
     @media (max-width: 640px) {
       .hero h1 { font-size: 28px; }
-      .hero .subtitle { font-size: 15px; }
       .card-grid.cols-2 { grid-template-columns: 1fr; }
       .page { padding: 72px 16px 48px; }
-      .pipeline-row { gap: 4px; }
-      .pipeline-step { font-size: 12px; padding: 4px 10px; }
-      .tool-table { font-size: 13px; }
-      .tool-table th, .tool-table td { padding: 8px 10px; }
-      .model-row { flex-wrap: wrap; gap: 6px; }
+      .diagram-row { flex-wrap: wrap; gap: 4px; }
+      .d-node { font-size: 12px; padding: 8px 12px; }
+      .d-branch { margin-left: 8px; padding-left: 12px; }
     }
   </style>
 </head>
 <body>
-
-<!-- ── Navigation ── -->
 <nav class="nav">
-  <div class="nav-title">
-    <div class="nav-logo">SA</div>
-    Capillary Solution Agent
-  </div>
+  <div class="nav-title"><div class="nav-logo">SA</div> Capillary Solution Agent</div>
   <div class="nav-right">
     <a class="nav-back" onclick="goBack()" role="button" tabindex="0">← Back</a>
     <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Toggle dark/light mode">🌙</button>
@@ -499,248 +134,176 @@
 
 <div class="page">
 
-  <!-- ── Hero ── -->
   <section class="hero">
     <h1>Capillary Solution Agent</h1>
-    <p class="subtitle">AI-powered feasibility assessment for the Customer Success team</p>
+    <p class="subtitle">An AI assistant that helps the Customer Success team evaluate client requests in minutes instead of hours — by searching real data, not guessing.</p>
     <div class="badges">
       <span class="badge green">● Production</span>
       <span class="badge blue">Anthropic Claude</span>
       <span class="badge purple">Multi-user Auth</span>
-      <span class="badge amber">LangGraph</span>
+      <span class="badge amber">LangGraph Orchestration</span>
     </div>
   </section>
 
   <hr class="divider">
 
-  <!-- ── What it does ── -->
   <section>
     <h2>What it does</h2>
+    <p class="section-desc">Think of it as a knowledgeable colleague who has read every Confluence page and Jira ticket — and can give you a structured answer in under a minute.</p>
     <ul class="feature-list">
-      <li>CS engineers submit Jira tickets, describe client requirements, or upload documents</li>
-      <li>Agent searches Jira, Confluence, Kapa docs, and docs.capillarytech.com for precedents and documentation</li>
-      <li>Returns a structured feasibility assessment: Problem → Verdict → Approach → Complexity → References → Open Questions</li>
-      <li>Flags for SA escalation when the request exceeds routine evaluation scope</li>
+      <li>Submit a Jira ticket ID, describe a client requirement, or upload a document (PDF, images, text)</li>
+      <li>The agent searches Jira, Confluence, Capillary product docs, and docs.capillarytech.com for real precedents</li>
+      <li>Returns a structured assessment: <strong>Problem → Verdict → Approach → Complexity → References → Open Questions</strong></li>
+      <li>When a request is too complex for routine evaluation, it flags for SA escalation with a pre-filled summary</li>
     </ul>
   </section>
 
-  <!-- ── Architecture ── -->
   <section>
-    <h2>Architecture</h2>
-    <p>Web UI built on Express with SSE streaming. The backend runs a LangGraph state machine that routes requests through a multi-step pipeline.</p>
+    <h2>How it works — the smart workflow</h2>
+    <p class="section-desc">The agent follows a step-by-step workflow powered by <strong>LangGraph</strong> — a framework that breaks complex AI tasks into manageable steps, like an assembly line where each station does one job well.</p>
 
-    <h3 style="margin-top: 20px;">Request pipeline</h3>
-    <div class="pipeline" style="margin-bottom: 20px;">
-      <div class="pipeline-row">
-        <span class="pipeline-step highlight">classify</span>
-        <span class="pipeline-arrow">→</span>
-        <span class="pipeline-step highlight">loadSkills</span>
-        <span class="pipeline-arrow">→</span>
-        <span class="pipeline-step highlight">skillRouter</span>
+    <div class="diagram">
+      <!-- Main pipeline -->
+      <div class="diagram-row">
+        <div class="d-node blue">classify<small>Understand the request</small></div>
+        <span class="d-arrow">→</span>
+        <div class="d-node teal">loadSkills<small>Pick relevant expertise</small></div>
+        <span class="d-arrow">→</span>
+        <div class="d-node amber">skillRouter<small>Choose the right path</small></div>
       </div>
-      <div class="pipeline-row" style="margin-left: 24px;">
-        <span class="pipeline-label">single-mode:</span>
-        <span class="pipeline-step">research</span>
-        <span class="pipeline-arrow">→</span>
-        <span class="pipeline-step">validate</span>
-      </div>
-      <div class="pipeline-row" style="margin-left: 24px;">
-        <span class="pipeline-label">multi-node:</span>
-        <span class="pipeline-step">researchFanOut</span>
-        <span class="pipeline-arrow">→</span>
-        <span class="pipeline-step">skillValidate</span>
+      <!-- Branch -->
+      <div style="display:flex;gap:24px;margin-left:40px;margin-top:4px">
+        <div class="d-branch">
+          <div class="diagram-row">
+            <span class="d-label">Standard assessment</span>
+            <div class="d-node blue">research<small>Search & reason (loop)</small></div>
+            <span class="d-arrow">→</span>
+            <div class="d-node green">validate<small>Check quality</small></div>
+          </div>
+          <div class="diagram-row">
+            <span class="d-label">Document generation</span>
+            <div class="d-node purple">researchFanOut<small>Parallel search</small></div>
+            <span class="d-arrow">→</span>
+            <div class="d-node purple">sectionWriter<small>Write each section</small></div>
+            <span class="d-arrow">→</span>
+            <div class="d-node green">skillValidate<small>Verify structure</small></div>
+          </div>
+        </div>
       </div>
     </div>
 
-    <div class="card-grid cols-2">
+    <div class="card-grid cols-2" style="margin-top:20px">
       <div class="card">
-        <h3>Single-mode path</h3>
-        <p>Standard feasibility assessments. One Sonnet streaming call handles research and synthesis in a multi-turn agentic loop.</p>
+        <h3>🔵 Standard path</h3>
+        <p>For everyday feasibility questions. The agent searches multiple sources, reasons across the results, and writes a structured verdict — all in one flowing conversation, like chatting with an expert.</p>
       </div>
       <div class="card">
-        <h3>Multi-node path</h3>
-        <p>SDDs and gap analyses. Parallel research across tool categories, then parallel section writing — each section by the right model.</p>
-      </div>
-      <div class="card">
-        <h3>Auth</h3>
-        <p>Multi-user with bcrypt + express-session. Google and Microsoft SSO supported. Session-based, cookie-secured.</p>
-      </div>
-      <div class="card">
-        <h3>Client persona</h3>
-        <p>Auto-detected from problem text and injected into the system prompt so responses are contextualised to the client's stack.</p>
+        <h3>🟣 Document path</h3>
+        <p>For SDDs and gap analyses. Searches all sources <em>simultaneously</em> (not one by one), then writes each section in parallel using the right AI model for each — fast models for simple sections, powerful models for complex reasoning.</p>
       </div>
     </div>
   </section>
 
-  <!-- ── Skills system ── -->
   <section>
-    <h2>Skills system</h2>
-    <p>Skills are prompt bundles in <code>skills/</code> folders, not code. Adding a skill means creating a folder and one line in <code>registry.json</code> — zero JS changes.</p>
-
-    <div class="card-grid" style="margin-top: 16px;">
-      <div class="card">
-        <h3>🎯 cr-evaluator</h3>
-        <p>Always-on feasibility rubric. Loaded on every request — defines OOTB/Config/Custom/Not Feasible verdicts, module map, and complexity scoring.</p>
+    <h2>Two AI models, used wisely</h2>
+    <p class="section-desc">Not every task needs the most powerful (and expensive) AI. The agent uses a <strong>fast, affordable model</strong> for quick tasks and a <strong>powerful reasoning model</strong> only when the task genuinely requires it — like using a calculator for arithmetic and a mathematician for proofs.</p>
+    <div class="model-list" style="margin-top:16px">
+      <div class="model-row">
+        <span class="badge purple" style="flex-shrink:0">Sonnet 4</span>
+        <span class="model-name">Reasoning</span>
+        <span class="model-task">Complex analysis, multi-source synthesis, architectural decisions — the "thinking" model</span>
       </div>
-      <div class="card">
-        <h3>📄 capillary-sdd-writer</h3>
-        <p>Generates Solution Design Documents. Multi-node execution with parallel research and section writing. Output delivered as a downloadable file.</p>
-      </div>
-      <div class="card">
-        <h3>📊 solution-gap-analyzer</h3>
-        <p>BRD gap analysis with scoring. Multi-node execution. Compares client requirements against platform capabilities and scores each gap.</p>
-      </div>
-      <div class="card">
-        <h3>🖼️ excalidraw-diagram</h3>
-        <p>Visual architecture diagrams. Generates Excalidraw JSON for solution architecture visualisation.</p>
+      <div class="model-row">
+        <span class="badge blue" style="flex-shrink:0">Haiku 4.5</span>
+        <span class="model-name">Fast tasks</span>
+        <span class="model-task">Classification, summarisation, simple sections, skill selection — ~50× cheaper, runs in parallel</span>
       </div>
     </div>
-
-    <p style="margin-top: 16px;">Skills have manifests (<code>manifest.json</code>) declaring execution mode, research phases, synthesis sections, and validation rules. Document-class skills deliver output as downloadable files, not raw chat text.</p>
   </section>
 
-  <!-- ── Research tools ── -->
+  <section>
+    <h2>Specialist skills</h2>
+    <p class="section-desc">The agent can activate specialist capabilities depending on what you ask for — like calling in a subject matter expert.</p>
+    <div class="card-grid cols-2" style="margin-top:4px">
+      <div class="card"><h3>🎯 CR Evaluator</h3><p>Always-on feasibility rubric. Knows what's OOTB, what needs configuration, and what requires custom development in Capillary.</p></div>
+      <div class="card"><h3>📄 SDD Writer</h3><p>Generates Solution Design Documents with parallel research and section-by-section writing. Delivered as a downloadable file.</p></div>
+      <div class="card"><h3>📊 Gap Analyzer</h3><p>Compares a BRD against Capillary capabilities. Scores each domain, identifies gaps, and suggests resolution paths.</p></div>
+      <div class="card"><h3>🖼️ Diagram Generator</h3><p>Creates visual architecture diagrams as Excalidraw JSON for solution architecture visualisation.</p></div>
+    </div>
+    <p style="margin-top:16px">Adding a new skill means creating a folder with instructions — no code changes needed. Skills declare their own execution mode, research needs, and validation rules via a manifest file.</p>
+  </section>
+
   <section>
     <h2>Research tools</h2>
-    <div class="card" style="overflow-x: auto;">
+    <p class="section-desc">The agent never guesses — it searches real sources before every answer.</p>
+    <div class="card" style="overflow-x:auto">
       <table class="tool-table">
-        <thead>
-          <tr>
-            <th>Source</th>
-            <th>Tools</th>
-            <th>Notes</th>
-          </tr>
-        </thead>
+        <thead><tr><th>Source</th><th>What it does</th></tr></thead>
         <tbody>
-          <tr>
-            <td><strong>Jira</strong></td>
-            <td><code>get_jira_ticket</code>, <code>search_jira</code>, <code>add_jira_comment</code></td>
-            <td>Fetches tickets, searches by keyword, posts comments. ADF → plain text conversion.</td>
-          </tr>
-          <tr>
-            <td><strong>Confluence</strong></td>
-            <td><code>search_confluence</code>, <code>get_confluence_page</code>, <code>create_confluence_page</code></td>
-            <td>Full-text search, page retrieval, page creation. Circuit-breaker retry logic.</td>
-          </tr>
-          <tr>
-            <td><strong>Kapa Docs</strong></td>
-            <td><code>search_kapa_docs</code></td>
-            <td>MCP protocol — semantic search over Capillary documentation. Degrades gracefully if unconfigured.</td>
-          </tr>
-          <tr>
-            <td><strong>Web Search</strong></td>
-            <td><code>search_docs_site</code></td>
-            <td>Sitemap-based search of docs.capillarytech.com. No external API — scores URLs by keyword overlap, fetches top pages.</td>
-          </tr>
+          <tr><td><strong>Jira</strong></td><td>Fetches specific tickets, searches for related CRs, and can post solution summaries as comments</td></tr>
+          <tr><td><strong>Confluence</strong></td><td>Searches solution docs and architecture pages, retrieves full page content, and can create new pages for SDDs</td></tr>
+          <tr><td><strong>Kapa Docs</strong></td><td>Semantic search over Capillary product documentation via MCP protocol — finds the most relevant doc chunks for any question</td></tr>
+          <tr><td><strong>Web Search</strong></td><td>Searches docs.capillarytech.com using the sitemap — no external API needed, works offline for cached results</td></tr>
         </tbody>
       </table>
     </div>
   </section>
 
-  <!-- ── Model strategy ── -->
   <section>
-    <h2>Model strategy</h2>
-    <p>Every operation uses the cheapest model that can do the job correctly. Sonnet tokens are spent only on tasks that require multi-source reasoning.</p>
-
-    <div class="model-list" style="margin-top: 16px;">
-      <div class="model-row">
-        <span class="badge purple" style="flex-shrink:0">Sonnet 4</span>
-        <span class="model-name">Synthesis</span>
-        <span class="model-task">Main agentic loop (streaming), reasoning sections in document skills</span>
-      </div>
-      <div class="model-row">
-        <span class="badge blue" style="flex-shrink:0">Haiku 4.5</span>
-        <span class="model-name">Classification</span>
-        <span class="model-task">Request classification, skill selection, tool result summarisation, structural sections, escalation summary</span>
-      </div>
+    <h2>Engineering optimizations</h2>
+    <p class="section-desc">Under the hood, several optimizations keep the agent fast and cost-efficient.</p>
+    <div class="opt-list">
+      <div class="opt-item"><span class="opt-icon">⚡</span><div><strong>Parallel pre-flight</strong> <span>— Request classification and skill detection run simultaneously before the main loop starts, saving 300–500ms on every request.</span></div></div>
+      <div class="opt-item"><span class="opt-icon">🗜️</span><div><strong>Parallel summarisation</strong> <span>— When multiple tools return results, all summaries are generated at once (not one by one), cutting research time significantly.</span></div></div>
+      <div class="opt-item"><span class="opt-icon">🔇</span><div><strong>Smart token buffering</strong> <span>— Text streams to you in real-time, but intermediate "thinking" text from tool-calling turns isn't duplicated in the final response.</span></div></div>
+      <div class="opt-item"><span class="opt-icon">🎯</span><div><strong>Conditional skill loading</strong> <span>— Only relevant skills and reference files are loaded based on what you're asking about, keeping the AI's context focused.</span></div></div>
+      <div class="opt-item"><span class="opt-icon">💰</span><div><strong>Model dispatch policy</strong> <span>— Every operation is routed to the cheapest model that can handle it. The expensive model is used only for complex reasoning.</span></div></div>
     </div>
-
-    <p style="margin-top: 16px;"><code>runSubAgent</code> enforces model validation — only Sonnet 4 and Haiku 4.5 are allowed. <code>MAX_AGENT_TOKENS</code> applies only to the Sonnet streaming call.</p>
   </section>
 
-  <!-- ── Deployment ── -->
   <section>
-    <h2>Deployment</h2>
-    <ul class="feature-list">
-      <li>Railway auto-deploy from GitHub <code>main</code> branch</li>
-      <li>Node.js 20+, ESM modules throughout</li>
-      <li>All configuration via environment variables</li>
-      <li>JSON file persistence (database migration planned)</li>
-    </ul>
+    <h2>Observability with LangSmith</h2>
+    <p class="section-desc">When enabled, every request is fully traceable — like having a flight recorder for AI conversations.</p>
+    <p><strong>LangSmith</strong> is a monitoring platform that records each step the agent takes: what it classified, which skills it loaded, what tools it called, and how it synthesised the answer. This helps the team debug issues, monitor response quality, and track costs per operation.</p>
+    <p>It's optional — when the <code>LANGCHAIN_TRACING_V2</code> environment variable isn't set, tracing is silently disabled with zero performance impact.</p>
   </section>
 
-  <!-- ── What's next ── -->
   <section>
     <h2>What's next</h2>
     <div class="roadmap-list">
-      <div class="roadmap-item">
-        <div class="roadmap-num">1</div>
-        <div>
-          <h3>Database persistence</h3>
-          <p>MongoDB or PostgreSQL for conversations, users, and client personas. Replace JSON file store.</p>
-        </div>
-      </div>
-      <div class="roadmap-item">
-        <div class="roadmap-num">2</div>
-        <div>
-          <h3>Context compaction</h3>
-          <p>Summarise older messages in long conversations to stay within token limits without losing context.</p>
-        </div>
-      </div>
-      <div class="roadmap-item">
-        <div class="roadmap-num">3</div>
-        <div>
-          <h3>Dynamic tool/skill loading</h3>
-          <p>Load tools and skills based on intent classification rather than static registry matching.</p>
-        </div>
-      </div>
-      <div class="roadmap-item">
-        <div class="roadmap-num">4</div>
-        <div>
-          <h3>Off-topic filtering</h3>
-          <p>Detect and gracefully decline requests outside the agent's domain before spending tokens on research.</p>
-        </div>
-      </div>
+      <div class="roadmap-item"><div class="roadmap-num">1</div><div><h3>Database persistence</h3><p>Move conversations, users, and client data from JSON files to a proper database for reliability at scale.</p></div></div>
+      <div class="roadmap-item"><div class="roadmap-num">2</div><div><h3>Context compaction</h3><p>Automatically summarise older messages in long conversations so the agent stays fast without losing important context.</p></div></div>
+      <div class="roadmap-item"><div class="roadmap-num">3</div><div><h3>Smart tool loading</h3><p>Only include relevant tools in each request based on what you're asking about — reducing noise and improving accuracy.</p></div></div>
+      <div class="roadmap-item"><div class="roadmap-num">4</div><div><h3>Off-topic filtering</h3><p>Detect and politely decline requests outside the agent's domain before spending resources on research.</p></div></div>
+      <div class="roadmap-item"><div class="roadmap-num">5</div><div><h3>Model-agnostic architecture</h3><p>The workflow engine (LangGraph) and tool system are already model-independent. A future update will abstract the AI model layer so the agent can work with OpenAI, Google Gemini, or open-source models — not just Anthropic Claude.</p></div></div>
     </div>
+  </section>
+
+  <section>
+    <h2>Deployment</h2>
+    <ul class="feature-list">
+      <li>Auto-deploys from GitHub to Railway on every push to <code>main</code></li>
+      <li>Node.js 20+, all configuration via environment variables — no hardcoded secrets</li>
+      <li>Multi-user authentication with email/password and Google/Microsoft SSO</li>
+      <li>Client persona detection — the agent automatically adapts its context when it recognises a known client</li>
+    </ul>
   </section>
 
 </div>
 
-<!-- ── Footer ── -->
-<footer class="footer">
-  Capillary Technologies — Customer Success Engineering
-</footer>
+<footer class="footer">Capillary Technologies — Customer Success Engineering</footer>
 
 <script>
-  // Theme toggle — shared with chat page via localStorage
-  function toggleTheme() {
-    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-    if (isDark) {
-      document.documentElement.removeAttribute('data-theme');
-      localStorage.setItem('theme', 'light');
-      document.getElementById('themeToggle').textContent = '🌙';
-    } else {
-      document.documentElement.setAttribute('data-theme', 'dark');
-      localStorage.setItem('theme', 'dark');
-      document.getElementById('themeToggle').textContent = '☀️';
-    }
-  }
-  // Init toggle button state
-  (function() {
-    if (localStorage.getItem('theme') === 'dark') document.getElementById('themeToggle').textContent = '☀️';
-  })();
-
-  function goBack() {
-    try {
-      const referrer = document.referrer;
-      if (referrer && new URL(referrer).origin === window.location.origin) {
-        history.back();
-        return;
-      }
-    } catch (e) { /* invalid referrer URL, fall through */ }
-    window.location.href = '/';
-  }
+function toggleTheme() {
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  if (isDark) { document.documentElement.removeAttribute('data-theme'); localStorage.setItem('theme','light'); document.getElementById('themeToggle').textContent='🌙'; }
+  else { document.documentElement.setAttribute('data-theme','dark'); localStorage.setItem('theme','dark'); document.getElementById('themeToggle').textContent='☀️'; }
+}
+(function(){ if(localStorage.getItem('theme')==='dark') document.getElementById('themeToggle').textContent='☀️'; })();
+function goBack() {
+  try { if(document.referrer && new URL(document.referrer).origin===location.origin){ history.back(); return; } } catch(e){}
+  location.href='/';
+}
 </script>
-
 </body>
 </html>
