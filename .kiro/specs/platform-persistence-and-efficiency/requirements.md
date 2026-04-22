@@ -2,9 +2,9 @@
 
 ## Introduction
 
-This feature upgrades the Capillary Solution Agent's infrastructure across six interconnected dimensions: database-backed persistence (replacing flat JSON files), client persona storage in the database, in-session context compaction to keep LLM context windows lean, dynamic tool loading based on user intent, dynamic skill loading based on user intent, and an off-topic request filter that intercepts irrelevant queries before they reach the main agent loop.
+This feature upgrades the Capillary Solution Agent's infrastructure across eight interconnected dimensions: database-backed persistence (replacing flat JSON files), client persona storage in the database, in-session context compaction to keep LLM context windows lean, dynamic tool loading based on user intent, dynamic skill loading based on user intent, an off-topic request filter that intercepts irrelevant queries before they reach the main agent loop, full skill exposure so the agent can discover and use any registered skill, and agent planning tools that let the agent decompose complex requests into trackable step-by-step plans.
 
-The goal is to reduce per-request cost, improve response quality under long conversations, and make the system maintainable as the user base grows beyond a handful of CS engineers.
+The goal is to reduce per-request cost, improve response quality under long conversations, make the system maintainable as the user base grows beyond a handful of CS engineers, and give the agent better autonomy through full skill visibility and structured planning.
 
 ---
 
@@ -22,6 +22,9 @@ The goal is to reduce per-request cost, improve response quality under long conv
 - **Skill**: A specialist prompt bundle loaded from `skills/<id>/` that extends the agent's capabilities.
 - **Sonnet**: `claude-sonnet-4-20250514` — the primary synthesis model.
 - **Tool**: An Anthropic-SDK tool definition (Jira, Confluence, Kapa, web search, skill activation) passed to the API call.
+- **Plan**: A structured list of steps the agent creates to decompose a complex request, stored in conversation state and visible to the user via SSE events.
+- **Plan_Tool**: The set of Anthropic-SDK tool definitions (`create_plan`, `update_plan_step`, `get_plan`) that the agent uses to manage plans.
+- **Skill_Registry**: The full set of skills defined in `skills/registry.json`, surfaced to the agent for discovery and activation.
 - **User_Store**: The DB collection/table that holds user accounts (replacing `data/users.json`).
 
 ---
@@ -126,6 +129,35 @@ The goal is to reduce per-request cost, improve response quality under long conv
 6. THE Gate SHALL NOT block messages that are ambiguous or borderline — only messages that are clearly unrelated to Capillary CS work (confidence threshold ≥ 0.85 for off-topic classification).
 7. WHEN THE Gate blocks a request, THE Agent SHALL emit a `status` SSE event with text `"🚫 Off-topic request detected"` and then stream the refusal message as `token` events.
 8. THE Gate classification SHALL run in parallel with any other pre-flight checks (e.g. existing `classifyRequest`) to avoid adding latency to on-topic requests.
+
+### Requirement 8: Full Skill Exposure
+
+**User Story:** As a CS engineer, I want the agent to be aware of all registered skills, so that it can discover and activate any skill without relying solely on keyword matching or semantic classification.
+
+#### Acceptance Criteria
+
+1. THE Agent SHALL surface all skills from `skills/registry.json` in the system prompt as a concise skill catalogue (ID, description, and trigger hints) so the LLM can discover any skill.
+2. WHEN the agent receives a user message, THE Agent SHALL include the full skill catalogue regardless of Intent_Classifier output, so that no skill is hidden from the LLM.
+3. THE skill catalogue SHALL be lightweight — containing only metadata (ID, description, trigger hints) — not the full skill prompt content, to minimise token overhead.
+4. WHEN the LLM determines a skill is relevant based on the catalogue, THE Agent SHALL allow the LLM to call `activate_skill` to load the full skill prompt on demand.
+5. THE Agent SHALL continue to use the Intent_Classifier (Requirement 6) to pre-load skill prompts for obvious matches, but the catalogue ensures the LLM can also discover and activate skills the classifier missed.
+6. THE skill catalogue SHALL be generated dynamically from `skills/registry.json` at startup and refreshed if the registry changes.
+7. THE Agent SHALL log when a skill is activated via catalogue discovery (LLM-initiated) versus Intent_Classifier pre-loading, to track discovery effectiveness.
+
+### Requirement 9: Agent Planning Tools
+
+**User Story:** As a CS engineer, I want the agent to create and follow a structured plan for complex requests, so that I can see its approach and track progress through each step.
+
+#### Acceptance Criteria
+
+1. THE Agent SHALL expose a `create_plan` tool that accepts a `title` (string) and `steps` (array of strings) and returns a plan object with a unique `planId` and each step initialised to `pending` status.
+2. THE Agent SHALL expose an `update_plan_step` tool that accepts `planId`, `stepIndex` (integer), and `status` (one of `pending`, `in_progress`, `completed`, `skipped`) and updates the specified step.
+3. THE Agent SHALL expose a `get_plan` tool that accepts `planId` and returns the current plan state including all steps and their statuses.
+4. WHEN the agent creates or updates a plan, THE Agent SHALL emit a `plan_update` SSE event containing the full current plan state, so the UI can render progress in real time.
+5. THE plan state SHALL be stored in the conversation context (as part of the LangGraph state) so that it persists across turns within the same conversation.
+6. WHEN a conversation is persisted to the DB, THE plan state SHALL be stored alongside the conversation messages so that plans survive page refreshes.
+7. THE Agent SHALL include the plan tools in every Anthropic API call (similar to `list_skills` and `activate_skill`), so the LLM can create plans for any request type.
+8. THE `create_plan` tool SHALL validate that `steps` is a non-empty array and `title` is a non-empty string; IF validation fails, THEN the tool SHALL return an error message without creating a plan.
 
 ---
 
