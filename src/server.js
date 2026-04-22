@@ -5,7 +5,7 @@ import { fileURLToPath } from 'url';
 import path from 'path';
 import { runAgent, buildEscalationSummary, AgentError } from './orchestrator.js';
 import { upload, extractFileContent, buildAnthropicContent } from './fileHandler.js';
-import * as store from './store.js';
+import { init as initStores, getConversationStore } from './stores/index.js';
 import authRouter, { requireAuth, bootstrapAdminIfNeeded } from './auth.js';
 import { getDocument } from './documentStore.js';
 
@@ -65,8 +65,9 @@ app.get('/api/documents/:downloadToken', (req, res) => {
 
 // ─── API: Conversations ──────────────────────────────────────────────────────
 
-app.get('/api/conversations', (_req, res) => {
-  res.json(store.listConversations());
+app.get('/api/conversations', (req, res) => {
+  const convStore = getConversationStore();
+  res.json(convStore.listConversations(req.session.userId));
 });
 
 app.post('/api/conversations', async (req, res) => {
@@ -74,18 +75,21 @@ app.post('/api/conversations', async (req, res) => {
   if (!message?.trim()) {
     return res.status(400).json({ error: 'message is required' });
   }
-  const conv = await store.createConversation(message.trim());
+  const convStore = getConversationStore();
+  const conv = await convStore.createConversation(req.session.userId, message.trim());
   res.status(201).json(conv);
 });
 
 app.get('/api/conversations/:id', (req, res) => {
-  const conv = store.getConversation(req.params.id);
+  const convStore = getConversationStore();
+  const conv = convStore.getConversation(req.params.id, req.session.userId);
   if (!conv) return res.status(404).json({ error: 'Not found' });
   res.json(conv);
 });
 
 app.delete('/api/conversations/:id', async (req, res) => {
-  const deleted = await store.deleteConversation(req.params.id);
+  const convStore = getConversationStore();
+  const deleted = await convStore.deleteConversation(req.params.id, req.session.userId);
   if (!deleted) return res.status(404).json({ error: 'Not found' });
   res.json({ ok: true });
 });
@@ -93,7 +97,8 @@ app.delete('/api/conversations/:id', async (req, res) => {
 // ─── API: Send message (SSE stream) ─────────────────────────────────────────
 
 app.post('/api/conversations/:id/messages', upload.array('files', 5), async (req, res) => {
-  const conv = store.getConversation(req.params.id);
+  const convStore = getConversationStore();
+  const conv = convStore.getConversation(req.params.id, req.session.userId);
   if (!conv) return res.status(404).json({ error: 'Conversation not found' });
 
   const content = req.body?.content || '';
@@ -121,7 +126,7 @@ app.post('/api/conversations/:id/messages', upload.array('files', 5), async (req
     }
 
     const fileNames = files.map(f => f.originalname);
-    await store.appendMessage(conv.id, {
+    await convStore.appendMessage(conv.id, {
       role: 'user',
       content: problemText || `(attached ${fileNames.join(', ')})`,
       ...(fileNames.length ? { files: fileNames } : {}),
@@ -137,12 +142,15 @@ app.post('/api/conversations/:id/messages', upload.array('files', 5), async (req
     const { text: responseText, skillsUsed, shouldEscalate } = await runAgent({
       problemText,
       history,
+      userId: req.session.userId,
+      conversationId: conv.id,
       onStatus: async (statusText) => sendEvent('status', { text: statusText }),
       onToken: async (text) => sendEvent('token', { text }),
       onToolStatus: async (info) => sendEvent('tool_status', info),
       onSkillActive: async (info) => sendEvent('skill_active', info),
       onPhase: async (name) => sendEvent('phase', { name }),
       onDocumentReady: async (info) => sendEvent('document_ready', info),
+      onPlanUpdate: async (plan) => sendEvent('plan_update', plan),
     });
 
     let escalated = false;
@@ -153,7 +161,7 @@ app.post('/api/conversations/:id/messages', upload.array('files', 5), async (req
     }
 
     const assistantMsg = { role: 'assistant', content: responseText, skillsUsed, escalated };
-    await store.appendMessage(conv.id, assistantMsg);
+    await convStore.appendMessage(conv.id, assistantMsg);
 
     sendEvent('message', assistantMsg);
     res.end();
@@ -179,7 +187,7 @@ app.get('*', (_req, res) => {
 const PORT = process.env.PORT || 3000;
 
 (async () => {
-  await store.init();
+  await initStores();
   await bootstrapAdminIfNeeded();
   app.listen(PORT, () => {
     console.log(`\n✅ Solution Agent running at http://localhost:${PORT}`);

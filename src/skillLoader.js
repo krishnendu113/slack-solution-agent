@@ -259,3 +259,26 @@ export function listSkills() {
     alwaysLoad: s.alwaysLoad || false,
   }));
 }
+
+/**
+ * Returns a compact markdown catalogue of all registered skills.
+ * Lists each skill's ID, description, and trigger hints — no full SKILL.md content.
+ * Designed to be injected into the system prompt so the LLM can discover any skill.
+ *
+ * @returns {string} Markdown block listing all skills
+ */
+export function getSkillCatalogue() {
+  const skills = getRegistry().skills;
+  const lines = skills.map(s => {
+    const triggers = s.triggers && s.triggers.length > 0
+      ? ` (triggers: ${s.triggers.join(', ')})`
+      : '';
+    return `- **${s.id}**: ${s.description}${triggers}`;
+  });
+
+  return [
+    '## Available Skills',
+    ...lines,
+    'Use `activate_skill` with the skill ID to load full instructions.',
+  ].join('\n');
+}

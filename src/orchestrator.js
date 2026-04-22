@@ -12,6 +12,8 @@
  *   onToolStatus({ id, name, ... })   — tool start / done / error
  *   onSkillActive({ id, description }) — when a skill is loaded
  *   onPhase(name)                     — phase transitions: 'understand' | 'research' | 'synthesise'
+ *   onDocumentReady({ filename, ... })— when a downloadable document is ready
+ *   onPlanUpdate(plan)                — when a plan is created or updated
  */
 
 import Anthropic from '@anthropic-ai/sdk';
@@ -39,57 +41,6 @@ function friendlyError(err) {
   if (status >= 500) return new AgentError("Anthropic's servers are having a rough day. Try again shortly.", msg);
   if (msg.includes('context length') || msg.includes('too long')) return new AgentError("Conversation too long for Claude. Start a new chat.", msg);
   return new AgentError(`Something unexpected happened (${status || 'unknown'}). Check server logs.`, msg);
-}
-
-// ─── Sub-Agent: Request Classification ───────────────────────────────────────
-
-const CLASSIFY_SYSTEM_PROMPT = `You are a CS request classifier for Capillary Technologies.
-Classify the given request and return JSON only — no prose, no markdown fences.
-
-Output schema:
-{
-  "type": "jira_ticket" | "cr" | "brd" | "issue" | "general_query",
-  "confidence": 0.0-1.0,
-  "missingInfo": ["string", ...]
-}
-
-type definitions:
-- jira_ticket: user provided one or more Jira ticket IDs (e.g. PSV-123, LMP-456)
-- cr: change request — client wants new or modified behaviour from Capillary
-- brd: business requirements document or RFP evaluation
-- issue: a bug, incident, or unexpected behaviour report
-- general_query: a product knowledge question or capability lookup
-
-confidence: how well-defined the request is (not how feasible it is)
-- 0.8-1.0: clear, specific, actionable without further information
-- 0.5-0.79: mostly clear but some context would help
-- 0.0-0.49: too vague or ambiguous to assess without more information
-
-missingInfo: list ONLY facts that would materially change the feasibility verdict.
-Keep this list short — only include genuinely blocking gaps.
-If the request is clear enough to proceed, return an empty array.`;
-
-/**
- * Classifies the incoming CS request using Haiku.
- * Returns { type, confidence, missingInfo } — falls back to a permissive default on error.
- */
-async function classifyRequest(problemText) {
-  try {
-    const raw = await runSubAgent({
-      systemPrompt: CLASSIFY_SYSTEM_PROMPT,
-      userContent: problemText,
-      operation: 'classify',
-    });
-    const parsed = JSON.parse(raw);
-    return {
-      type: parsed.type || 'general_query',
-      confidence: typeof parsed.confidence === 'number' ? parsed.confidence : 0.8,
-      missingInfo: Array.isArray(parsed.missingInfo) ? parsed.missingInfo : [],
-    };
-  } catch (err) {
-    console.warn('[orchestrator] Classification failed, proceeding without it:', err.message);
-    return { type: 'general_query', confidence: 0.8, missingInfo: [] };
-  }
 }
 
 // ─── Base System Prompt ───────────────────────────────────────────────────────
@@ -206,33 +157,34 @@ When you receive a request:
 
 // ─── Main Agent Entry Point ───────────────────────────────────────────────────
 
-export async function runAgent({ problemText, history, onStatus, onToken, onToolStatus, onSkillActive, onPhase, onDocumentReady }) {
+/**
+ * Runs the agentic loop for a user message.
+ *
+ * @param {object} opts
+ * @param {string} opts.problemText - The user's message
+ * @param {Array} opts.history - Conversation message history
+ * @param {string} opts.userId - Authenticated user ID for store scoping
+ * @param {string} opts.conversationId - Conversation ID for persisting compactedAt and plan state
+ * @param {Function} opts.onStatus - Status update callback
+ * @param {Function} opts.onToken - Streamed text delta callback
+ * @param {Function} opts.onToolStatus - Tool status callback
+ * @param {Function} opts.onSkillActive - Skill activation callback
+ * @param {Function} opts.onPhase - Phase transition callback
+ * @param {Function} opts.onDocumentReady - Document ready callback
+ * @param {Function} opts.onPlanUpdate - Plan update callback
+ */
+export async function runAgent({ problemText, history, userId, conversationId, onStatus, onToken, onToolStatus, onSkillActive, onPhase, onDocumentReady, onPlanUpdate }) {
   if (!process.env.ANTHROPIC_API_KEY) {
     throw new AgentError("No API key found. Add ANTHROPIC_API_KEY to .env.", 'ANTHROPIC_API_KEY not set');
   }
 
-  // Pre-flight clarification check — run classify in parallel with skill detection
-  // before handing off to the graph, so vague requests get a question immediately.
   await onPhase?.('understand');
   await onStatus('🔍 Analysing request...');
 
-  const classification = await classifyRequest(problemText);
-  console.log(`[orchestrator] Classification: type=${classification.type} confidence=${classification.confidence} missing=${classification.missingInfo.length}`);
-
-  if (classification.missingInfo.length > 0 && classification.confidence < 0.5) {
-    const question = [
-      'To give you an accurate feasibility assessment, I need a few more details:',
-      '',
-      ...classification.missingInfo.map(q => `- ${q}`),
-    ].join('\n');
-    await onStatus('❓ Need clarification...');
-    if (onToken) await onToken(question);
-    return { text: question, skillsUsed: [], shouldEscalate: false };
-  }
-
-  // Delegate to LangGraph state machine
+  // Delegate to LangGraph state machine — the graph's preflight node handles
+  // gate classification, intent classification, and skill matching.
   const graph = buildGraph(
-    { onStatus, onToken, onToolStatus, onSkillActive, onPhase, onDocumentReady },
+    { onStatus, onToken, onToolStatus, onSkillActive, onPhase, onDocumentReady, onPlanUpdate },
     BASE_SYSTEM_PROMPT
   );
 
@@ -241,7 +193,8 @@ export async function runAgent({ problemText, history, onStatus, onToken, onTool
     result = await graph.invoke({
       problemText,
       messages: [...history],
-      classification,
+      conversationId,
+      userId,
     });
   } catch (err) {
     if (err instanceof Anthropic.APIError) throw friendlyError(err);

@@ -1,7 +1,7 @@
 /**
  * graph.js — LangGraph state machine for the Solution Agent agentic loop.
  *
- * Nodes: classify → loadSkills → research (loop) → synthesise → validate → END
+ * Nodes: preflight → loadSkills → research (loop) → synthesise → validate → END
  * SSE callbacks are passed via closures at graph construction time.
  * LangSmith tracing wraps each node with traceable() when LANGCHAIN_TRACING_V2=true.
  */
@@ -9,11 +9,15 @@
 import { StateGraph, END } from '@langchain/langgraph';
 import { traceable } from 'langsmith/traceable';
 import Anthropic from '@anthropic-ai/sdk';
-import { loadSkillsForProblem, loadSkillFiles, listSkills } from './skillLoader.js';
-import { getTools } from './tools/index.js';
+import { loadSkillsForProblem, loadSkillFiles, listSkills, getSkillCatalogue } from './skillLoader.js';
+import { getToolsByIntent } from './tools/index.js';
 import { runSubAgent } from './subAgent.js';
 import { getClientContext, updateClientPersona } from './clientPersona.js';
 import { storeDocument } from './documentStore.js';
+import { runPreflight } from './preflight.js';
+import { compactIfNeeded as compactMessages, estimateTokens } from './compaction.js';
+import { getAllPlans } from './planManager.js';
+import { getConversationStore } from './stores/index.js';
 
 const MAX_TURNS = 15;
 
@@ -36,39 +40,7 @@ function getClient() {
   return _client;
 }
 
-// ─── Shared prompts (imported from orchestrator patterns) ─────────────────────
-
-const CLASSIFY_SYSTEM_PROMPT = `You are a CS request classifier for Capillary Technologies.
-Classify the given request and return JSON only — no prose, no markdown fences.
-
-Output schema:
-{
-  "type": "jira_ticket" | "cr" | "brd" | "issue" | "general_query",
-  "confidence": 0.0-1.0,
-  "missingInfo": ["string", ...]
-}
-
-type definitions:
-- jira_ticket: user provided one or more Jira ticket IDs (e.g. PSV-123, LMP-456)
-- cr: change request — client wants new or modified behaviour from Capillary
-- brd: business requirements document or RFP evaluation
-- issue: a bug, incident, or unexpected behaviour report
-- general_query: a product knowledge question or capability lookup
-
-confidence: how well-defined the request is (not how feasible it is)
-missingInfo: list ONLY facts that would materially change the feasibility verdict.`;
-
-const SKILL_SELECT_SYSTEM_PROMPT = `You are a skill selector for the Capillary CS Solution Agent.
-Your job: given a user's problem, decide which specialist skills (if any) are needed.
-Only recommend a skill when the user is clearly asking for that type of deliverable.
-
-Available skills:
-{{SKILL_LIST}}
-
-Return JSON only — no prose, no markdown fences:
-[{ "id": "skill-id", "reason": "one sentence why this skill fits the request" }]
-
-Return [] if no specialist skills are needed.`;
+// ─── Shared prompts ───────────────────────────────────────────────────────────
 
 function inputSummary(name, input) {
   switch (name) {
@@ -80,6 +52,9 @@ function inputSummary(name, input) {
     case 'search_docs_site': return `"${input.query || ''}"`;
     case 'activate_skill': return input.skill_id || '';
     case 'list_skills': return '';
+    case 'create_plan': return input.title || '';
+    case 'update_plan_step': return `step ${input.stepIndex ?? '?'} → ${input.status || '?'}`;
+    case 'get_plan': return input.planId || '';
     default: return name;
   }
 }
@@ -92,6 +67,7 @@ function resultSummary(name, result) {
       result.startsWith('Unknown')
     )) return { text: result };
     if (name === 'activate_skill') return { text: 'Skill loaded' };
+    if (name === 'create_plan' || name === 'update_plan_step' || name === 'get_plan') return { text: 'Plan updated' };
     const parsed = JSON.parse(result);
     if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && parsed.error) return { text: parsed.error };
     switch (name) {
@@ -135,37 +111,42 @@ If no URL is present, set url to null. Keep summary under 150 words.`;
  * Builds and compiles the LangGraph state machine.
  * SSE callbacks are captured as closures so nodes can stream events.
  *
- * @param {object} callbacks - { onStatus, onToken, onToolStatus, onSkillActive, onPhase }
+ * @param {object} callbacks - { onStatus, onToken, onToolStatus, onSkillActive, onPhase, onDocumentReady, onPlanUpdate }
  * @param {string} baseSystemPrompt - The BASE_SYSTEM_PROMPT string from orchestrator
  * @returns CompiledStateGraph
  */
 export function buildGraph(callbacks, baseSystemPrompt) {
-  const { onStatus, onToken, onToolStatus, onSkillActive, onPhase, onDocumentReady } = callbacks;
+  const { onStatus, onToken, onToolStatus, onSkillActive, onPhase, onDocumentReady, onPlanUpdate } = callbacks;
 
-  // ── Node: classify ─────────────────────────────────────────────────────────
-  // If classification was pre-computed by the orchestrator adapter, skip the Haiku call.
-  const classifyNode = maybeTraceable('classify', async (state) => {
-    const [semanticMatches, { context: clientContext, slug: clientSlug }] = await Promise.all([
-      (async () => {
-        try {
-          const skills = listSkills().filter(s => !s.alwaysLoad);
-          if (!skills.length) return [];
-          const skillList = skills.map(s => `- ${s.id}: ${s.description}`).join('\n');
-          const raw = await runSubAgent({
-            systemPrompt: SKILL_SELECT_SYSTEM_PROMPT.replace('{{SKILL_LIST}}', skillList),
-            userContent: state.problemText,
-            operation: 'skill-select',
-          });
-          const parsed = JSON.parse(raw);
-          return Array.isArray(parsed) ? parsed : [];
-        } catch { return null; }
-      })(),
+
+  // ── Node: preflight ────────────────────────────────────────────────────────
+  // Replaces the old classifyNode. Runs gate + classification + tool tags + skill matching
+  // in parallel with client context detection.
+  const preflightNode = maybeTraceable('preflight', async (state) => {
+    const [preflightResult, { context: clientContext, slug: clientSlug }] = await Promise.all([
+      runPreflight(state.problemText),
       getClientContext(state.problemText),
     ]);
 
-    const classification = state.classification || { type: 'general_query', confidence: 0.8, missingInfo: [] };
-    console.log(`[graph:classify] type=${classification.type} confidence=${classification.confidence}`);
-    return { classification, semanticMatches, clientContext, clientSlug };
+    const { classification, toolTags, onTopic, refusalMessage, skillIds, skillReasons } = preflightResult;
+
+    // Map preflight skillIds/skillReasons to the semanticMatches format expected by loadSkillsForProblem
+    const semanticMatches = skillIds.map(id => ({
+      id,
+      reason: skillReasons[id] || 'preflight match',
+    }));
+
+    console.log(`[graph:preflight] onTopic=${onTopic} type=${classification.type} confidence=${classification.confidence} tools=[${toolTags}] skills=[${skillIds}]`);
+
+    return {
+      classification,
+      semanticMatches: semanticMatches.length > 0 ? semanticMatches : [],
+      clientContext,
+      clientSlug,
+      toolTags,
+      onTopic,
+      refusalMessage: refusalMessage || '',
+    };
   });
 
   // ── Node: loadSkills ───────────────────────────────────────────────────────
@@ -183,10 +164,21 @@ export function buildGraph(callbacks, baseSystemPrompt) {
       }
     }
 
-    const classificationContext = `\n\n---\n## Request Context (pre-classified)\nType: ${state.classification.type} | Confidence: ${Math.round(state.classification.confidence * 100)}%`;
-    const systemPrompt = (state.clientContext ? state.clientContext + '\n\n' : '') + baseSystemPrompt + classificationContext + skillPrompt;
+    // Log loaded skill IDs and reasons at [graph:skills] level
+    if (skillIds.length) {
+      for (const skill of matched) {
+        console.log(`[graph:skills] Loaded skill: ${skill.id} reason=${skill.matchReason || skill.alwaysActive ? 'always-on' : 'keyword match'}`);
+      }
+    }
 
-    return { skillIds, skillPrompt, systemPrompt, manifests: Object.fromEntries(manifests) };
+    // Inject skill catalogue into system prompt (always present)
+    const skillCatalogue = getSkillCatalogue();
+
+    const classificationContext = `\n\n---\n## Request Context (pre-classified)\nType: ${state.classification.type} | Confidence: ${Math.round(state.classification.confidence * 100)}%`;
+    const catalogueBlock = `\n\n---\n${skillCatalogue}`;
+    const systemPrompt = (state.clientContext ? state.clientContext + '\n\n' : '') + baseSystemPrompt + classificationContext + catalogueBlock + skillPrompt;
+
+    return { skillIds, skillPrompt, systemPrompt, manifests: Object.fromEntries(manifests), skillCatalogue };
   });
 
   // ── Node: skillRouter ────────────────────────────────────────────────────
@@ -265,7 +257,7 @@ export function buildGraph(callbacks, baseSystemPrompt) {
 
   // ── Node: researchFanOut ─────────────────────────────────────────────────
   const researchFanOutNode = maybeTraceable('researchFanOut', async (state) => {
-    const { handle } = getTools();
+    const { handle } = getToolsByIntent(state.toolTags);
     const { mergedManifest, problemText } = state;
     const sources = mergedManifest?.researchPhase || [];
 
@@ -340,10 +332,6 @@ export function buildGraph(callbacks, baseSystemPrompt) {
   });
 
   // ── Helper: writeSectionContent ──────────────────────────────────────────
-  /**
-   * Writes one section of a document using the appropriate model.
-   * Never throws — returns placeholder content on error.
-   */
   async function writeSectionContent({ section, problemText, researchResults, sectionInstructions, skillId }) {
     const MODEL_MAP = {
       haiku:  'claude-haiku-4-5-20251001',
@@ -352,7 +340,6 @@ export function buildGraph(callbacks, baseSystemPrompt) {
     const model = MODEL_MAP[section.model] || MODEL_MAP.haiku;
     const maxTokens = section.maxTokens || (section.model === 'sonnet' ? 4096 : 1024);
 
-    // Filter research results to only the sources this section cares about
     const relevantSources = section.researchSources || Object.keys(researchResults);
     const relevantResearch = relevantSources
       .filter(s => researchResults[s])
@@ -400,24 +387,51 @@ export function buildGraph(callbacks, baseSystemPrompt) {
   }
 
   // ── Helper: extractSectionInstructions ───────────────────────────────────
-  /**
-   * Extracts the content between SECTION markers for a given section name.
-   * Falls back to the full skill prompt if no marker is found.
-   */
   function extractSectionInstructions(skillPrompt, sectionName) {
     const startMarker = `<!-- SECTION: ${sectionName} -->`;
     const endMarker = `<!-- END SECTION: ${sectionName} -->`;
     const start = skillPrompt.indexOf(startMarker);
     const end = skillPrompt.indexOf(endMarker);
-    if (start === -1 || end === -1) return skillPrompt; // fallback: full prompt
+    if (start === -1 || end === -1) return skillPrompt;
     return skillPrompt.slice(start + startMarker.length, end).trim();
   }
+
+  // ── Node: compactIfNeeded ────────────────────────────────────────────────
+  // Runs between research turns: after tool execution, before next Anthropic API call.
+  // Checks estimated token count and compacts if above threshold.
+  const compactIfNeededNode = maybeTraceable('compactIfNeeded', async (state) => {
+    const beforeTokens = estimateTokens(state.messages);
+    const { messages: compactedMessages, compacted } = await compactMessages(state.messages);
+
+    if (compacted) {
+      await onStatus('🗜️ Compacting context...');
+      const afterTokens = estimateTokens(compactedMessages);
+      console.log(`[graph:compaction] Compacted context: before=${Math.round(beforeTokens)} after=${Math.round(afterTokens)} tokens`);
+
+      // Store compactedAt timestamp via the conversation store
+      if (state.conversationId) {
+        try {
+          const store = getConversationStore();
+          await store.setCompactedAt(state.conversationId);
+        } catch (err) {
+          console.warn(`[graph:compaction] Failed to set compactedAt: ${err.message}`);
+        }
+      }
+
+      return { messages: compactedMessages, compacted: true };
+    }
+
+    return {};
+  });
 
   // ── Node: research (one tool-use turn) ────────────────────────────────────
   const researchNode = maybeTraceable('research', async (state) => {
     const anthropic = getClient();
-    const { definitions: tools, handle } = getTools();
+    const { definitions: tools, handle } = getToolsByIntent(state.toolTags);
     const maxTokens = parseInt(process.env.MAX_AGENT_TOKENS || '8000', 10);
+
+    // Log selected tool names and intent tags
+    console.log(`[graph:tools] Intent tags=[${(state.toolTags || []).join(', ')}] Selected tools=[${tools.map(t => t.name).join(', ')}]`);
 
     if (state.hasUsedTools && !state.synthesiseEmitted) {
       await onPhase?.('synthesise');
@@ -430,6 +444,7 @@ export function buildGraph(callbacks, baseSystemPrompt) {
     let currentBlock = null;
     let stopReason = null;
     let deltaText = '';
+    const turnTokens = [];
 
     console.log(`[graph:research] Turn ${state.turnCount + 1}, ${tools.length} tools, ${state.messages.length} messages`);
 
@@ -454,7 +469,7 @@ export function buildGraph(callbacks, baseSystemPrompt) {
         if (event.delta?.type === 'text_delta' && currentBlock?.type === 'text') {
           currentBlock._text += event.delta.text;
           deltaText += event.delta.text;
-          turnTokens.push(event.delta.text);  // buffer instead of streaming immediately
+          turnTokens.push(event.delta.text);
         } else if (event.delta?.type === 'input_json_delta' && currentBlock?.type === 'tool_use') {
           currentBlock._inputJson += event.delta.partial_json;
         }
@@ -490,9 +505,6 @@ export function buildGraph(callbacks, baseSystemPrompt) {
         : b);
 
     const newMessages = [...state.messages, { role: 'assistant', content: cleanBlocks }];
-    // Only accumulate text into fullText for synthesis turns (non-tool-use).
-    // Tool-use turn text was already streamed to the client in real-time via onToken
-    // but should NOT be included in the stored message to avoid duplication.
     const fullText = stopReason !== 'tool_use'
       ? state.fullText + deltaText
       : state.fullText;
@@ -533,6 +545,27 @@ export function buildGraph(callbacks, baseSystemPrompt) {
         await onSkillActive({ id: block.input.skill_id, description: skillInfo?.description || '', triggers: [], alwaysOn: false });
       }
 
+      // Emit plan_update SSE event after create_plan or update_plan_step tool execution
+      if ((block.name === 'create_plan' || block.name === 'update_plan_step') && !err) {
+        try {
+          const planResult = JSON.parse(content);
+          if (planResult && !planResult.error && onPlanUpdate) {
+            await onPlanUpdate(planResult);
+          }
+          // Persist plan state via the conversation store
+          if (state.conversationId) {
+            try {
+              const store = getConversationStore();
+              await store.savePlanState(state.conversationId, getAllPlans());
+            } catch (persistErr) {
+              console.warn(`[graph:plans] Failed to persist plan state: ${persistErr.message}`);
+            }
+          }
+        } catch {
+          // JSON parse failed — skip plan update
+        }
+      }
+
       if (err) {
         if (onToolStatus) await onToolStatus({ id: block._toolId, name: block.name, inputSummary: inputSummary(block.name, block.input), status: 'error', text: err.message });
       } else {
@@ -542,6 +575,10 @@ export function buildGraph(callbacks, baseSystemPrompt) {
     }
 
     const finalMessages = [...newMessages, { role: 'user', content: toolResults }];
+
+    // Update plans state channel
+    const plans = getAllPlans();
+
     return {
       messages: finalMessages,
       fullText,
@@ -550,6 +587,7 @@ export function buildGraph(callbacks, baseSystemPrompt) {
       hasUsedTools: true,
       researchEmitted: true,
       synthesiseEmitted: state.synthesiseEmitted,
+      plans,
     };
   });
 
@@ -596,7 +634,7 @@ export function buildGraph(callbacks, baseSystemPrompt) {
       }
     }
 
-    // Check required JSON fields (for JSON output skills like excalidraw)
+    // Check required JSON fields
     if (validation.requiredJsonFields?.length) {
       try {
         const parsed = JSON.parse(assembledDoc);
@@ -619,7 +657,6 @@ export function buildGraph(callbacks, baseSystemPrompt) {
       const filename = `${skillIds[0]}-${new Date().toISOString().slice(0, 10)}.md`;
       const downloadToken = storeDocument({ content: finalDoc, filename });
 
-      // Generate ≤150-word summary via Haiku
       const summaryPrompt = `Summarise this document in under 150 words for a chat message.
 Cover: what was produced, key findings or verdict, and available delivery options.
 End with exactly this line: "📄 ${filename} ready — [Download] or say 'write to Confluence' / 'comment on JIRA-123'."
@@ -633,10 +670,8 @@ Return plain text only.`;
         operation: 'doc-summary',
       });
 
-      // Stream summary via onToken
       if (onToken) await onToken(summary);
 
-      // Emit document_ready SSE event
       if (onDocumentReady) {
         await onDocumentReady({
           filename,
@@ -652,6 +687,7 @@ Return plain text only.`;
     if (onToken) await onToken(finalDoc);
     return { assembledDoc: finalDoc, fullText: finalDoc };
   });
+
 
   // ── Graph wiring ───────────────────────────────────────────────────────────
 
@@ -679,30 +715,56 @@ Return plain text only.`;
       sectionResults: { value: (_, n) => n ?? [], default: () => [] },
       assembledDoc: { value: (_, n) => n ?? '', default: () => '' },
       downloadToken: { value: (_, n) => n ?? null, default: () => null },
+      // New state channels for tasks 10.1–10.3
+      plans: { value: (_, n) => n ?? [], default: () => [] },
+      toolTags: { value: (_, n) => n ?? [], default: () => [] },
+      onTopic: { value: (_, n) => n ?? true, default: () => true },
+      refusalMessage: { value: (_, n) => n ?? '', default: () => '' },
+      skillCatalogue: { value: (_, n) => n ?? '', default: () => '' },
+      compacted: { value: (_, n) => n ?? false, default: () => false },
+      conversationId: { value: (_, n) => n ?? null, default: () => null },
+      userId: { value: (_, n) => n ?? null, default: () => null },
     },
   });
 
-  graph.addNode('classify', classifyNode);
+  graph.addNode('preflight', preflightNode);
   graph.addNode('loadSkills', loadSkillsNode);
   graph.addNode('skillRouter', skillRouterNode);
   graph.addNode('researchFanOut', researchFanOutNode);
   graph.addNode('sectionWriter', sectionWriterNode);
   graph.addNode('skillValidate', skillValidateNode);
   graph.addNode('research', researchNode);
+  graph.addNode('compactIfNeeded', compactIfNeededNode);
   graph.addNode('validate', validateNode);
 
-  graph.addEdge('__start__', 'classify');
-  graph.addEdge('classify', 'loadSkills');
+  // Wire: __start__ → preflight → conditional (off-topic → __end__, on-topic → loadSkills)
+  graph.addEdge('__start__', 'preflight');
+
+  graph.addConditionalEdges('preflight', async (state) => {
+    if (!state.onTopic) {
+      // Off-topic: emit status and stream refusal, then short-circuit to END
+      await onStatus('🚫 Off-topic request detected');
+      if (onToken && state.refusalMessage) {
+        await onToken(state.refusalMessage);
+      }
+      return '__end__';
+    }
+    return 'loadSkills';
+  });
+
   graph.addEdge('loadSkills', 'skillRouter');
 
   graph.addConditionalEdges('skillRouter', (state) => {
     return state.executionMode === 'multi-node' ? 'researchFanOut' : 'research';
   });
 
+  // Research loop: research → compactIfNeeded → research (on tool_use), research → validate (on end_turn)
   graph.addConditionalEdges('research', (state) => {
-    if (state.stopReason === 'tool_use' && state.turnCount < MAX_TURNS) return 'research';
+    if (state.stopReason === 'tool_use' && state.turnCount < MAX_TURNS) return 'compactIfNeeded';
     return 'validate';
   });
+
+  graph.addEdge('compactIfNeeded', 'research');
 
   graph.addEdge('validate', '__end__');
   graph.addEdge('researchFanOut', 'sectionWriter');

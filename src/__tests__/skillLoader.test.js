@@ -10,7 +10,7 @@ import fc from 'fast-check';
 import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
-import { loadManifest } from '../skillLoader.js';
+import { loadManifest, getSkillCatalogue } from '../skillLoader.js';
 import { extractSectionInstructions } from '../graphHelpers.js';
 
 describe('loadManifest', () => {
@@ -138,5 +138,66 @@ describe('extractSectionInstructions', () => {
 
     expect(extractSectionInstructions(prompt, 'problem')).toBe('Problem instructions');
     expect(extractSectionInstructions(prompt, 'architecture')).toBe('Architecture instructions');
+  });
+});
+
+
+describe('getSkillCatalogue', () => {
+  it('returns a markdown string starting with ## Available Skills', () => {
+    const catalogue = getSkillCatalogue();
+    expect(catalogue.startsWith('## Available Skills')).toBe(true);
+  });
+
+  it('contains every skill ID from the registry', () => {
+    const catalogue = getSkillCatalogue();
+    const expectedIds = ['cr-evaluator', 'capillary-sdd-writer', 'solution-gap-analyzer', 'excalidraw-diagram'];
+    for (const id of expectedIds) {
+      expect(catalogue).toContain(`**${id}**`);
+    }
+  });
+
+  it('contains every skill description from the registry', () => {
+    const catalogue = getSkillCatalogue();
+    expect(catalogue).toContain('CS feasibility evaluation rubric');
+    expect(catalogue).toContain('Generate a developer-ready Capillary SDD');
+    expect(catalogue).toContain('Analyze a BRD to predict Capillary match percentage');
+    expect(catalogue).toContain('Create Excalidraw diagram JSON files');
+  });
+
+  it('includes trigger hints for skills that have triggers', () => {
+    const catalogue = getSkillCatalogue();
+    // capillary-sdd-writer has triggers like "sdd", "system design document"
+    expect(catalogue).toContain('(triggers: sdd, system design document');
+    // excalidraw-diagram has triggers like "diagram", "excalidraw"
+    expect(catalogue).toContain('(triggers: diagram, flow diagram');
+  });
+
+  it('does not include trigger hints for skills with no triggers', () => {
+    const catalogue = getSkillCatalogue();
+    // cr-evaluator has empty triggers array — should not have "(triggers: )"
+    const crLine = catalogue.split('\n').find(l => l.includes('**cr-evaluator**'));
+    expect(crLine).toBeDefined();
+    expect(crLine).not.toContain('(triggers:');
+  });
+
+  it('ends with the activate_skill usage hint', () => {
+    const catalogue = getSkillCatalogue();
+    expect(catalogue).toContain('Use `activate_skill` with the skill ID to load full instructions.');
+  });
+
+  it('does NOT contain full SKILL.md content', () => {
+    const catalogue = getSkillCatalogue();
+    // SKILL.md files contain detailed instructions — check that none of those appear
+    // The catalogue should be compact metadata only
+    expect(catalogue).not.toContain('# CR Evaluator');
+    expect(catalogue).not.toContain('## Instructions');
+    expect(catalogue).not.toContain('## Golden Path');
+    // Should be reasonably short (under 2000 chars for 4 skills)
+    expect(catalogue.length).toBeLessThan(2000);
+  });
+
+  it('includes alwaysLoad skills like cr-evaluator', () => {
+    const catalogue = getSkillCatalogue();
+    expect(catalogue).toContain('**cr-evaluator**');
   });
 });

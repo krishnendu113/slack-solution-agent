@@ -18,6 +18,7 @@ import { confluenceDefinitions, handleConfluenceTool } from './confluence.js';
 import { kapaDefinitions, handleKapaTool } from './kapa.js';
 import { webSearchDefinitions, handleWebSearchTool } from './webSearch.js';
 import { loadSkill, listSkills } from '../skillLoader.js';
+import { createPlan, updatePlanStep, getPlan } from '../planManager.js';
 
 // ─── Skill Tool Definitions ───────────────────────────────────────────────────
 
@@ -39,6 +40,70 @@ const SKILL_DEFINITIONS = [
     },
   },
 ];
+
+// ─── Plan Tool Definitions ────────────────────────────────────────────────────
+
+const PLAN_DEFINITIONS = [
+  {
+    name: 'create_plan',
+    description: 'Create a structured plan with steps to track progress on a complex request.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: 'Plan title describing the overall goal' },
+        steps: { type: 'array', items: { type: 'string' }, description: 'Ordered list of step descriptions' },
+      },
+      required: ['title', 'steps'],
+    },
+  },
+  {
+    name: 'update_plan_step',
+    description: 'Update the status of a plan step.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        planId: { type: 'string', description: 'Plan ID returned by create_plan' },
+        stepIndex: { type: 'integer', description: 'Zero-based index of the step to update' },
+        status: { type: 'string', enum: ['pending', 'in_progress', 'completed', 'skipped'], description: 'New status' },
+      },
+      required: ['planId', 'stepIndex', 'status'],
+    },
+  },
+  {
+    name: 'get_plan',
+    description: 'Retrieve the current state of a plan.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        planId: { type: 'string', description: 'Plan ID to retrieve' },
+      },
+      required: ['planId'],
+    },
+  },
+];
+
+// ─── Tool-to-Category Mapping ─────────────────────────────────────────────────
+
+/**
+ * Maps tool category tags (from the intent classifier) to tool names.
+ * Used by getToolsByIntent() to filter definitions by category.
+ */
+const TOOL_CATEGORY_MAP = {
+  jira: ['get_jira_ticket', 'search_jira', 'add_jira_comment'],
+  confluence: ['search_confluence', 'get_confluence_page', 'create_confluence_page'],
+  kapa_docs: ['search_kapa_docs'],
+  web_search: ['search_docs_site'],
+  skills: ['list_skills', 'activate_skill'],
+};
+
+/** Tool names that are always included regardless of intent tags. */
+const ALWAYS_INCLUDED_TOOLS = new Set([
+  'list_skills',
+  'activate_skill',
+  'create_plan',
+  'update_plan_step',
+  'get_plan',
+]);
 
 // ─── Main Export ──────────────────────────────────────────────────────────────
 
@@ -93,10 +158,126 @@ export function getTools() {
       }
     }
 
+    // Plan tools
+    if (name === 'create_plan') {
+      const result = createPlan(input.title, input.steps);
+      return JSON.stringify(result, null, 2);
+    }
+    if (name === 'update_plan_step') {
+      const result = updatePlanStep(input.planId, input.stepIndex, input.status);
+      return JSON.stringify(result, null, 2);
+    }
+    if (name === 'get_plan') {
+      const plan = getPlan(input.planId);
+      if (!plan) return JSON.stringify({ error: `Plan not found: ${input.planId}` });
+      return JSON.stringify(plan, null, 2);
+    }
+
     return `Unknown tool: ${name}`;
   }
 
   return { definitions, handle };
+}
+
+/**
+ * Returns a filtered tool set based on intent classifier tags.
+ *
+ * Always includes skill meta-tools (list_skills, activate_skill) and
+ * plan tools (create_plan, update_plan_step, get_plan) regardless of tags.
+ *
+ * If `toolTags` is empty, null, or undefined, returns all tools (fallback).
+ *
+ * @param {string[]|null|undefined} toolTags - Category tags from the intent classifier
+ * @returns {{ definitions: object[], handle: (name: string, input: object) => Promise<string> }}
+ */
+export function getToolsByIntent(toolTags) {
+  const jiraOk = !!(process.env.JIRA_BASE_URL && process.env.JIRA_EMAIL && process.env.JIRA_API_TOKEN);
+  const confOk = !!(process.env.CONFLUENCE_BASE_URL && process.env.JIRA_EMAIL && process.env.CONFLUENCE_API_TOKEN);
+
+  // Build the full set of available definitions (same as getTools, plus plan tools)
+  const allDefinitions = [
+    ...(jiraOk ? jiraDefinitions : []),
+    ...(confOk ? confluenceDefinitions : []),
+    ...kapaDefinitions,
+    ...webSearchDefinitions,
+    ...SKILL_DEFINITIONS,
+    ...PLAN_DEFINITIONS,
+  ];
+
+  // If toolTags is empty/null/undefined, return all tools (fallback)
+  if (!toolTags || !Array.isArray(toolTags) || toolTags.length === 0) {
+    return { definitions: allDefinitions, handle: buildHandle() };
+  }
+
+  // Build the set of tool names allowed by the provided tags
+  const allowedNames = new Set(ALWAYS_INCLUDED_TOOLS);
+  for (const tag of toolTags) {
+    const toolNames = TOOL_CATEGORY_MAP[tag];
+    if (toolNames) {
+      for (const name of toolNames) allowedNames.add(name);
+    }
+  }
+
+  const definitions = allDefinitions.filter(def => allowedNames.has(def.name));
+
+  return { definitions, handle: buildHandle() };
+}
+
+/**
+ * Builds the unified handle() dispatcher used by both getTools() and getToolsByIntent().
+ * Extracted to avoid duplication.
+ *
+ * @returns {(name: string, input: object) => Promise<string>}
+ */
+function buildHandle() {
+  async function handle(name, input) {
+    // Jira
+    if (name === 'get_jira_ticket' || name === 'search_jira' || name === 'add_jira_comment') {
+      return handleJiraTool(name, input);
+    }
+    // Confluence
+    if (name === 'search_confluence' || name === 'get_confluence_page' || name === 'create_confluence_page') {
+      return handleConfluenceTool(name, input);
+    }
+    // Kapa docs
+    if (name === 'search_kapa_docs') {
+      return handleKapaTool(name, input);
+    }
+    // Web / sitemap search
+    if (name === 'search_docs_site') {
+      return handleWebSearchTool(name, input);
+    }
+    // Skills
+    if (name === 'list_skills') {
+      return JSON.stringify(listSkills(), null, 2);
+    }
+    if (name === 'activate_skill') {
+      try {
+        const prompt = await loadSkill(input.skill_id);
+        return `Skill "${input.skill_id}" activated. Follow these instructions precisely:\n\n${prompt}`;
+      } catch (err) {
+        return `Failed to load skill: ${err.message}. Use list_skills to see available skills.`;
+      }
+    }
+    // Plan tools
+    if (name === 'create_plan') {
+      const result = createPlan(input.title, input.steps);
+      return JSON.stringify(result, null, 2);
+    }
+    if (name === 'update_plan_step') {
+      const result = updatePlanStep(input.planId, input.stepIndex, input.status);
+      return JSON.stringify(result, null, 2);
+    }
+    if (name === 'get_plan') {
+      const plan = getPlan(input.planId);
+      if (!plan) return JSON.stringify({ error: `Plan not found: ${input.planId}` });
+      return JSON.stringify(plan, null, 2);
+    }
+
+    return `Unknown tool: ${name}`;
+  }
+
+  return handle;
 }
 
 /**

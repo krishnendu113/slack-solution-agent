@@ -3,65 +3,9 @@ import bcrypt from 'bcrypt';
 import passport from 'passport';
 import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 import { Strategy as MicrosoftStrategy } from 'passport-microsoft';
-import { readFileSync, writeFileSync, existsSync } from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import { getUserStore } from './stores/index.js';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const USERS_FILE = path.join(__dirname, '../data/users.json');
-const BCRYPT_ROUNDS = 12;
 const ALLOWED_DOMAIN = process.env.ALLOWED_EMAIL_DOMAIN || 'capillarytech.com';
-
-// ─── User store helpers ──────────────────────────────────────────────────────
-
-function loadUsers() {
-  if (!existsSync(USERS_FILE)) return [];
-  try { return JSON.parse(readFileSync(USERS_FILE, 'utf8')); }
-  catch { return []; }
-}
-
-function saveUsers(users) {
-  writeFileSync(USERS_FILE, JSON.stringify(users, null, 2), 'utf8');
-}
-
-function findUserByEmail(email) {
-  return loadUsers().find(u => u.email.toLowerCase() === email.toLowerCase());
-}
-
-async function createUser({ email, password = null, role = 'user' }) {
-  const users = loadUsers();
-  if (users.find(u => u.email.toLowerCase() === email.toLowerCase())) {
-    throw new Error('User already exists');
-  }
-  const passwordHash = password ? await bcrypt.hash(password, BCRYPT_ROUNDS) : null;
-  const user = {
-    id: crypto.randomUUID(),
-    email,
-    passwordHash,
-    role,
-    createdAt: new Date().toISOString(),
-  };
-  users.push(user);
-  saveUsers(users);
-  return user;
-}
-
-// Upsert for SSO — create on first login, return existing on subsequent logins
-function upsertSsoUser(email) {
-  const existing = findUserByEmail(email);
-  if (existing) return existing;
-  const users = loadUsers();
-  const user = {
-    id: crypto.randomUUID(),
-    email,
-    passwordHash: null,
-    role: 'user',
-    createdAt: new Date().toISOString(),
-  };
-  users.push(user);
-  saveUsers(users);
-  return user;
-}
 
 // ─── Bootstrap first admin ───────────────────────────────────────────────────
 
@@ -69,10 +13,13 @@ export async function bootstrapAdminIfNeeded() {
   const email = process.env.BOOTSTRAP_ADMIN_EMAIL;
   const pass = process.env.BOOTSTRAP_ADMIN_PASS;
   if (!email || !pass) return;
-  const users = loadUsers();
-  if (users.length > 0) return;
+
+  const store = getUserStore();
+  const existing = await store.findUserByEmail(email);
+  if (existing) return;
+
   console.log(`[auth] Bootstrapping admin user: ${email}`);
-  await createUser({ email, password: pass, role: 'admin' });
+  await store.createUser({ email, password: pass, role: 'admin' });
 }
 
 // ─── Auth middleware ─────────────────────────────────────────────────────────
@@ -86,9 +33,17 @@ export function requireAuth(req, res, next) {
 // ─── Passport setup ──────────────────────────────────────────────────────────
 
 passport.serializeUser((user, done) => done(null, user.id));
-passport.deserializeUser((id, done) => {
-  const user = loadUsers().find(u => u.id === id);
-  done(null, user || false);
+passport.deserializeUser(async (id, done) => {
+  try {
+    // Deserialize by looking up the user store — find by iterating isn't ideal
+    // but the store interface only exposes findByEmail. For now, we store the
+    // email in the session and use that for deserialization if needed.
+    // Passport deserialization is only used for SSO flows; session-based auth
+    // uses req.session.userId directly.
+    done(null, { id });
+  } catch (err) {
+    done(err, false);
+  }
 });
 
 function domainAllowed(email) {
@@ -96,7 +51,7 @@ function domainAllowed(email) {
 }
 
 function makeSsoCallback(provider) {
-  return (_accessToken, _refreshToken, profile, done) => {
+  return async (_accessToken, _refreshToken, profile, done) => {
     const email = profile.emails?.[0]?.value;
     if (!email) return done(new Error(`No email returned from ${provider}`));
     if (!domainAllowed(email)) {
@@ -104,8 +59,13 @@ function makeSsoCallback(provider) {
       err.status = 403;
       return done(err);
     }
-    const user = upsertSsoUser(email);
-    done(null, user);
+    try {
+      const store = getUserStore();
+      const user = await store.upsertSsoUser(email);
+      done(null, user);
+    } catch (err) {
+      done(err);
+    }
   };
 }
 
@@ -138,7 +98,8 @@ router.post('/api/auth/login', async (req, res) => {
   const { email, password } = req.body || {};
   if (!email || !password) return res.status(400).json({ error: 'email and password required' });
 
-  const user = findUserByEmail(email);
+  const store = getUserStore();
+  const user = await store.findUserByEmail(email);
   if (!user || !user.passwordHash) return res.status(401).json({ error: 'Invalid email or password.' });
 
   const match = await bcrypt.compare(password, user.passwordHash);
@@ -177,7 +138,8 @@ router.post('/api/auth/register', async (req, res) => {
   if (!['user', 'admin'].includes(role)) return res.status(400).json({ error: 'role must be user or admin' });
 
   try {
-    const user = await createUser({ email, password, role });
+    const store = getUserStore();
+    const user = await store.createUser({ email, password, role });
     res.status(201).json({ ok: true, id: user.id, email: user.email, role: user.role });
   } catch (err) {
     res.status(409).json({ error: err.message });
