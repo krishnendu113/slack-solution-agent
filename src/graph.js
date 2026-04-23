@@ -659,7 +659,8 @@ export function buildGraph(callbacks, baseSystemPrompt) {
 
       const summaryPrompt = `Summarise this document in under 150 words for a chat message.
 Cover: what was produced, key findings or verdict, and available delivery options.
-End with exactly this line: "📄 ${filename} ready — [Download] or say 'write to Confluence' / 'comment on JIRA-123'."
+End by noting that 📄 ${filename} is ready and a download card is provided below. Mention the user can also say "write to Confluence" or "comment on JIRA-123" for other delivery options.
+Do NOT include bracket-enclosed action text — the download card handles that.
 Return plain text only.`;
 
       const summary = await runSubAgent({
