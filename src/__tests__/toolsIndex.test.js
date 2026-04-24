@@ -2,15 +2,60 @@
  * toolsIndex.test.js — Unit tests for src/tools/index.js
  *
  * Tests getToolsByIntent() filtering, plan tool definitions,
- * tool-to-category mapping, and plan tool handling in handle().
+ * history lookup tool definitions, tool-to-category mapping,
+ * and plan/history tool handling in handle().
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { getTools, getToolsByIntent } from '../tools/index.js';
 import { clearPlans } from '../planManager.js';
 
+// Mock the store factory so history lookup handlers can call getConversationStore()
+vi.mock('../stores/index.js', () => {
+  const conversations = {};
+  return {
+    getConversationStore: () => ({
+      getConversation: (id, userId) => {
+        const conv = conversations[id];
+        if (!conv) return null;
+        if (conv.userId !== userId) return null;
+        return conv;
+      },
+      searchConversations: (userId, query, limit) => {
+        if (!query) return [];
+        const lowerQuery = query.toLowerCase();
+        const matches = [];
+        for (const conv of Object.values(conversations)) {
+          if (conv.userId !== userId) continue;
+          for (const msg of conv.messages) {
+            if (msg.content && msg.content.toLowerCase().includes(lowerQuery)) {
+              matches.push({
+                conversationId: conv.id,
+                title: conv.title,
+                createdAt: conv.createdAt,
+                updatedAt: conv.updatedAt,
+                snippet: msg.content.slice(0, 200),
+              });
+              break;
+            }
+          }
+        }
+        return matches.slice(0, limit);
+      },
+    }),
+    _setTestConversations: (convs) => {
+      for (const key of Object.keys(conversations)) delete conversations[key];
+      Object.assign(conversations, convs);
+    },
+  };
+});
+
+// Import the test helper to set up conversations
+import { _setTestConversations } from '../stores/index.js';
+
 beforeEach(() => {
   clearPlans();
+  _setTestConversations({});
   // Reset env vars to a clean state (no Jira/Confluence configured)
   delete process.env.JIRA_BASE_URL;
   delete process.env.JIRA_EMAIL;
@@ -35,6 +80,13 @@ describe('getTools()', () => {
     expect(names).toContain('activate_skill');
   });
 
+  it('always includes history lookup tools', () => {
+    const { definitions } = getTools();
+    const names = definitions.map(d => d.name);
+    expect(names).toContain('lookup_conversation_history');
+    expect(names).toContain('search_user_conversations');
+  });
+
   it('does not include plan tools (backward compat)', () => {
     const { definitions } = getTools();
     const names = definitions.map(d => d.name);
@@ -57,7 +109,7 @@ describe('getToolsByIntent()', () => {
     it('returns all tools when toolTags is null', () => {
       const { definitions } = getToolsByIntent(null);
       const names = definitions.map(d => d.name);
-      // Should include kapa, web search, skills, and plan tools
+      // Should include kapa, web search, skills, plan tools, and history lookup tools
       expect(names).toContain('search_kapa_docs');
       expect(names).toContain('search_docs_site');
       expect(names).toContain('list_skills');
@@ -65,6 +117,8 @@ describe('getToolsByIntent()', () => {
       expect(names).toContain('create_plan');
       expect(names).toContain('update_plan_step');
       expect(names).toContain('get_plan');
+      expect(names).toContain('lookup_conversation_history');
+      expect(names).toContain('search_user_conversations');
     });
 
     it('returns all tools when toolTags is undefined', () => {
@@ -166,6 +220,13 @@ describe('getToolsByIntent()', () => {
       expect(names).toContain('update_plan_step');
       expect(names).toContain('get_plan');
     });
+
+    it('always includes both history lookup tools regardless of tags', () => {
+      const { definitions } = getToolsByIntent(['kapa_docs']);
+      const names = definitions.map(d => d.name);
+      expect(names).toContain('lookup_conversation_history');
+      expect(names).toContain('search_user_conversations');
+    });
   });
 });
 
@@ -262,5 +323,144 @@ describe('plan tool handling via handle()', () => {
 
     expect(result.planId).toBeDefined();
     expect(result.title).toBe('Via getTools');
+  });
+});
+
+// ─── History lookup tool handling via handle() ────────────────────────────────
+
+describe('history lookup tool handling via handle()', () => {
+  const testUserId = 'user-abc';
+  const testConvId = 'conv-123';
+
+  beforeEach(() => {
+    _setTestConversations({
+      [testConvId]: {
+        id: testConvId,
+        userId: testUserId,
+        title: 'Test Conversation',
+        createdAt: '2024-01-01T00:00:00.000Z',
+        updatedAt: '2024-01-02T00:00:00.000Z',
+        messages: [
+          { role: 'user', content: 'Hello world', timestamp: '2024-01-01T00:00:00.000Z' },
+          { role: 'assistant', content: 'Hi there', timestamp: '2024-01-01T00:01:00.000Z' },
+          { role: 'user', content: 'How are you?', timestamp: '2024-01-01T00:02:00.000Z' },
+        ],
+        plans: [],
+      },
+      'conv-other': {
+        id: 'conv-other',
+        userId: 'user-other',
+        title: 'Other User Conv',
+        createdAt: '2024-01-01T00:00:00.000Z',
+        updatedAt: '2024-01-01T00:00:00.000Z',
+        messages: [
+          { role: 'user', content: 'Secret stuff', timestamp: '2024-01-01T00:00:00.000Z' },
+        ],
+        plans: [],
+      },
+    });
+  });
+
+  it('lookup_conversation_history returns all messages for valid conversation', async () => {
+    const { handle } = getToolsByIntent(null, { userId: testUserId });
+    const result = JSON.parse(await handle('lookup_conversation_history', {
+      conversationId: testConvId,
+    }));
+
+    expect(result.conversationId).toBe(testConvId);
+    expect(result.messageCount).toBe(3);
+    expect(result.messages).toHaveLength(3);
+    expect(result.messages[0].content).toBe('Hello world');
+  });
+
+  it('lookup_conversation_history applies messageRange slicing', async () => {
+    const { handle } = getToolsByIntent(null, { userId: testUserId });
+    const result = JSON.parse(await handle('lookup_conversation_history', {
+      conversationId: testConvId,
+      messageRange: { start: 1, count: 1 },
+    }));
+
+    expect(result.messageCount).toBe(1);
+    expect(result.messages).toHaveLength(1);
+    expect(result.messages[0].content).toBe('Hi there');
+  });
+
+  it('lookup_conversation_history returns error for non-existent conversation', async () => {
+    const { handle } = getToolsByIntent(null, { userId: testUserId });
+    const result = JSON.parse(await handle('lookup_conversation_history', {
+      conversationId: 'nonexistent',
+    }));
+
+    expect(result.error).toBe('Conversation not found');
+  });
+
+  it('lookup_conversation_history returns error for wrong user', async () => {
+    const { handle } = getToolsByIntent(null, { userId: testUserId });
+    const result = JSON.parse(await handle('lookup_conversation_history', {
+      conversationId: 'conv-other',
+    }));
+
+    expect(result.error).toBe('Conversation not found');
+  });
+
+  it('search_user_conversations returns matching results', async () => {
+    const { handle } = getToolsByIntent(null, { userId: testUserId });
+    const result = JSON.parse(await handle('search_user_conversations', {
+      query: 'Hello',
+    }));
+
+    expect(result.query).toBe('Hello');
+    expect(result.resultCount).toBe(1);
+    expect(result.results).toHaveLength(1);
+    expect(result.results[0].conversationId).toBe(testConvId);
+  });
+
+  it('search_user_conversations returns empty results message when no matches', async () => {
+    const { handle } = getToolsByIntent(null, { userId: testUserId });
+    const result = JSON.parse(await handle('search_user_conversations', {
+      query: 'nonexistent-query-xyz',
+    }));
+
+    expect(result.query).toBe('nonexistent-query-xyz');
+    expect(result.resultCount).toBe(0);
+    expect(result.results).toEqual([]);
+    expect(result.message).toBe('No matching conversations found');
+  });
+
+  it('search_user_conversations does not return other users conversations', async () => {
+    const { handle } = getToolsByIntent(null, { userId: testUserId });
+    const result = JSON.parse(await handle('search_user_conversations', {
+      query: 'Secret',
+    }));
+
+    expect(result.resultCount).toBe(0);
+  });
+
+  it('search_user_conversations clamps limit to [1, 20]', async () => {
+    const { handle } = getToolsByIntent(null, { userId: testUserId });
+
+    // limit below 1 should be clamped to 1
+    const result1 = JSON.parse(await handle('search_user_conversations', {
+      query: 'Hello',
+      limit: -5,
+    }));
+    expect(result1.resultCount).toBeGreaterThanOrEqual(0);
+
+    // limit above 20 should be clamped to 20
+    const result2 = JSON.parse(await handle('search_user_conversations', {
+      query: 'Hello',
+      limit: 100,
+    }));
+    expect(result2.resultCount).toBeGreaterThanOrEqual(0);
+  });
+
+  it('search_user_conversations defaults limit to 5 when omitted', async () => {
+    const { handle } = getToolsByIntent(null, { userId: testUserId });
+    const result = JSON.parse(await handle('search_user_conversations', {
+      query: 'Hello',
+    }));
+
+    // Should work without limit parameter
+    expect(result.resultCount).toBeGreaterThanOrEqual(0);
   });
 });

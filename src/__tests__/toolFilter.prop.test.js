@@ -27,12 +27,14 @@ const ALWAYS_INCLUDED = new Set([
   'create_plan',
   'update_plan_step',
   'get_plan',
+  'lookup_conversation_history',
+  'search_user_conversations',
 ]);
 
 // ─── Property 9 ──────────────────────────────────────────────────────────────
 
 describe('Property 9: Tool filtering respects tags and always includes meta-tools', () => {
-  // **Validates: Requirements 5.2, 5.3, 9.7**
+  // **Validates: Requirements 5.2, 5.3, 9.7, 10.7**
 
   beforeEach(() => {
     // Set env vars so jira and confluence tools are available in allDefinitions
@@ -80,6 +82,10 @@ describe('Property 9: Tool filtering respects tags and always includes meta-tool
         expect(nameSet.has('create_plan')).toBe(true);
         expect(nameSet.has('update_plan_step')).toBe(true);
         expect(nameSet.has('get_plan')).toBe(true);
+
+        // (d) lookup_conversation_history and search_user_conversations always present
+        expect(nameSet.has('lookup_conversation_history')).toBe(true);
+        expect(nameSet.has('search_user_conversations')).toBe(true);
       }),
       { numRuns: 100 },
     );

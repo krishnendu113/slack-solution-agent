@@ -65,10 +65,19 @@ export async function findUserByEmail(email) {
 /**
  * Creates a new user. Hashes password with bcrypt before storing.
  * Throws if a user with the same email already exists.
- * @param {{ email: string, password?: string|null, role?: string }} opts
- * @returns {Promise<{ id: string, email: string, passwordHash: string|null, role: string, createdAt: string }>}
+ * @param {{ email: string, password?: string|null, role?: string, firstName?: string, lastName?: string, passwordType?: string|null, mustChangePassword?: boolean, createdBy?: string }} opts
+ * @returns {Promise<object>}
  */
-export async function createUser({ email, password = null, role = 'user' }) {
+export async function createUser({
+  email,
+  password = null,
+  role = 'user',
+  firstName = '',
+  lastName = '',
+  passwordType = null,
+  mustChangePassword = false,
+  createdBy = 'system',
+}) {
   const normalised = email.toLowerCase();
   if (data.find(u => u.email.toLowerCase() === normalised)) {
     throw new Error('User already exists');
@@ -77,10 +86,18 @@ export async function createUser({ email, password = null, role = 'user' }) {
   const passwordHash = password ? await bcrypt.hash(password, BCRYPT_ROUNDS) : null;
   const user = {
     id: crypto.randomUUID(),
+    firstName,
+    lastName,
     email,
     passwordHash,
     role,
+    passwordType,
+    mustChangePassword,
+    failedLoginAttempts: 0,
+    lockedUntil: null,
     createdAt: new Date().toISOString(),
+    lastPasswordChange: null,
+    createdBy,
   };
 
   data.push(user);
@@ -89,10 +106,57 @@ export async function createUser({ email, password = null, role = 'user' }) {
 }
 
 /**
+ * Finds a user by ID.
+ * @param {string} id
+ * @returns {Promise<object|null>}
+ */
+export async function findUserById(id) {
+  return data.find(u => u.id === id) || null;
+}
+
+/**
+ * Returns all user records (shallow copies).
+ * @returns {Promise<object[]>}
+ */
+export async function listUsers() {
+  return data.map(u => ({ ...u }));
+}
+
+/**
+ * Merges fields into an existing user record, saves, and returns the updated user.
+ * Returns null if the user is not found.
+ * @param {string} id
+ * @param {object} fields
+ * @returns {Promise<object|null>}
+ */
+export async function updateUser(id, fields) {
+  const user = data.find(u => u.id === id);
+  if (!user) return null;
+
+  Object.assign(user, fields);
+  await scheduleSave();
+  return user;
+}
+
+/**
+ * Removes a user from the store by ID. Returns true if found and removed, false otherwise.
+ * @param {string} id
+ * @returns {Promise<boolean>}
+ */
+export async function deleteUser(id) {
+  const idx = data.findIndex(u => u.id === id);
+  if (idx === -1) return false;
+
+  data.splice(idx, 1);
+  await scheduleSave();
+  return true;
+}
+
+/**
  * Upsert for SSO — find existing by email (case-insensitive), return if found.
  * Otherwise create with passwordHash: null, role: 'user'.
  * @param {string} email
- * @returns {Promise<{ id: string, email: string, passwordHash: string|null, role: string, createdAt: string }>}
+ * @returns {Promise<object>}
  */
 export async function upsertSsoUser(email) {
   const existing = await findUserByEmail(email);
@@ -100,10 +164,18 @@ export async function upsertSsoUser(email) {
 
   const user = {
     id: crypto.randomUUID(),
+    firstName: '',
+    lastName: '',
     email,
     passwordHash: null,
     role: 'user',
+    passwordType: null,
+    mustChangePassword: false,
+    failedLoginAttempts: 0,
+    lockedUntil: null,
     createdAt: new Date().toISOString(),
+    lastPasswordChange: null,
+    createdBy: 'sso',
   };
 
   data.push(user);

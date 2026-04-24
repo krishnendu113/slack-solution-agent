@@ -257,7 +257,7 @@ export function buildGraph(callbacks, baseSystemPrompt) {
 
   // ── Node: researchFanOut ─────────────────────────────────────────────────
   const researchFanOutNode = maybeTraceable('researchFanOut', async (state) => {
-    const { handle } = getToolsByIntent(state.toolTags);
+    const { handle } = getToolsByIntent(state.toolTags, { userId: state.userId });
     const { mergedManifest, problemText } = state;
     const sources = mergedManifest?.researchPhase || [];
 
@@ -427,7 +427,7 @@ export function buildGraph(callbacks, baseSystemPrompt) {
   // ── Node: research (one tool-use turn) ────────────────────────────────────
   const researchNode = maybeTraceable('research', async (state) => {
     const anthropic = getClient();
-    const { definitions: tools, handle } = getToolsByIntent(state.toolTags);
+    const { definitions: tools, handle } = getToolsByIntent(state.toolTags, { userId: state.userId });
     const maxTokens = parseInt(process.env.MAX_AGENT_TOKENS || '8000', 10);
 
     // Log selected tool names and intent tags

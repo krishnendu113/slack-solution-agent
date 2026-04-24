@@ -6,7 +6,7 @@ import path from 'path';
 import { runAgent, buildEscalationSummary, AgentError } from './orchestrator.js';
 import { upload, extractFileContent, buildAnthropicContent } from './fileHandler.js';
 import { init as initStores, getConversationStore } from './stores/index.js';
-import authRouter, { requireAuth, bootstrapAdminIfNeeded } from './auth.js';
+import authRouter, { requireAuth, requirePasswordChange, bootstrapAdminIfNeeded } from './auth.js';
 import { getDocument } from './documentStore.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -48,6 +48,9 @@ app.use((req, res, next) => {
   if (open.some(p => req.path === p || req.path.startsWith('/api/auth/'))) return next();
   return requireAuth(req, res, next);
 });
+
+// ─── Must-change-password guard — restrict access until password is changed ──
+app.use(requirePasswordChange);
 
 app.use(express.static(path.join(__dirname, '../public')));
 

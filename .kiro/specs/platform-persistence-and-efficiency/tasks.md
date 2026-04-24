@@ -2,12 +2,12 @@
 
 ## Overview
 
-This plan implements the store adapter pattern for the Capillary Solution Agent, adds context compaction, intent-based dynamic tool/skill loading, an off-topic gate, full skill catalogue exposure, and agent planning tools. Tasks are ordered in two phases:
+This plan implements the store adapter pattern for the Capillary Solution Agent, adds context compaction, intent-based dynamic tool/skill loading, an off-topic gate, full skill catalogue exposure, agent planning tools, and conversation history lookup tools. Tasks are ordered in two phases:
 
-- **Phase 1 (JSON-file adapters):** Define store interfaces, implement JSON-file adapters (upgrading existing flat-file code), wire all features to the adapter interface. Ships immediately with zero new infrastructure.
+- **Phase 1 (JSON-file adapters):** Define store interfaces, implement JSON-file adapters (upgrading existing flat-file code), wire all features to the adapter interface, implement conversation history lookup tools. Ships immediately with zero new infrastructure.
 - **Phase 2 (MongoDB adapters):** Add MongoDB adapter implementations behind the same interface, plus data migration. Swap in when MongoDB is provisioned.
 
-All features (compaction, preflight, plans, skill catalogue, tool filtering) work with either backend via the store factory.
+All features (compaction, preflight, plans, skill catalogue, tool filtering, history lookup) work with either backend via the store factory.
 
 ## Tasks
 
@@ -168,7 +168,7 @@ All features (compaction, preflight, plans, skill catalogue, tool filtering) wor
 - [x] 9. Checkpoint — Verify tool filtering, skill catalogue, and preflight pass tests
   - Ensure all tests pass, ask the user if questions arise.
 
-- [-] 10. Rewire LangGraph state machine
+- [x] 10. Rewire LangGraph state machine
   - [x] 10.1 Update `src/graph.js` — replace `classify` with `preflight` node
     - Replace the `classifyNode` with a new `preflightNode` that calls `runPreflight()`
     - If `onTopic === false`, short-circuit to END with refusal message (emit `status` SSE `"🚫 Off-topic request detected"` and stream refusal via `token` events)
@@ -231,8 +231,66 @@ All features (compaction, preflight, plans, skill catalogue, tool filtering) wor
 - [x] 13. Checkpoint — Verify all Phase 1 features pass tests with JSON-file backend
   - Ensure all tests pass with `STORE_BACKEND=json` (default), ask the user if questions arise.
 
-- [ ] 14. Implement MongoDB adapters (Phase 2)
-  - [ ] 14.1 Add `mongodb` dependency and create `src/db.js`
+- [x] 14. Implement conversation history lookup tools
+  - [x] 14.1 Add `searchConversations` method to `src/stores/json/conversationStore.js`
+    - Export `searchConversations(userId, query, limit)` — case-insensitive substring match across message content for the given userId
+    - For each matching conversation, extract a snippet: first matching message content, truncated to 200 characters
+    - Return results sorted by `updatedAt` descending, limited to `limit` results
+    - Return array of `{ conversationId, title, createdAt, updatedAt, snippet }` objects
+    - _Requirements: 10.4, 10.5, 10.6_
+
+  - [x] 14.2 Add `HISTORY_LOOKUP_DEFINITIONS` and handlers to `src/tools/index.js`
+    - Add `HISTORY_LOOKUP_DEFINITIONS` array with `lookup_conversation_history` and `search_user_conversations` tool definitions
+    - Add both tool names to `ALWAYS_INCLUDED_TOOLS` set
+    - Add `history` category to `TOOL_CATEGORY_MAP`
+    - Update `buildHandle()` to accept a `context` parameter with `userId` for scoping
+    - Add `lookup_conversation_history` handler: call `getConversation(conversationId, userId)`, apply optional `messageRange` slicing, return messages or error
+    - Add `search_user_conversations` handler: clamp `limit` to [1, 20] (default 5), call `searchConversations(userId, query, limit)`, return results or empty-results message
+    - Log each invocation at `[graph:tools]` level with `conversationId` or `query`
+    - Append `HISTORY_LOOKUP_DEFINITIONS` to `allDefinitions` in both `getTools()` and `getToolsByIntent()`
+    - _Requirements: 10.1, 10.2, 10.3, 10.4, 10.7, 10.8, 10.9, 10.10_
+
+  - [x] 14.3 Update `src/graph.js` — pass `userId` context to tool handler
+    - Update the research node's tool dispatch to pass `{ userId }` context to `buildHandle()` / `handle()` so history lookup tools can scope store lookups
+    - _Requirements: 10.3_
+
+  - [x]* 14.4 Write property test for history lookup round-trip (Property 16)
+    - **Property 16: History lookup round-trip**
+    - Create a conversation with N random messages, call `lookup_conversation_history` — all N messages returned in order with content preserved
+    - Test with and without `messageRange`: with range `{ start: S, count: C }`, verify exactly `min(C, N - S)` messages returned starting from index S
+    - Test against the JSON-file adapter
+    - **Validates: Requirements 10.1, 10.2**
+
+  - [x]* 14.5 Write property test for history lookup user scoping (Property 17)
+    - **Property 17: History lookup user scoping**
+    - Create conversations for userId A, attempt lookup with userId B — always returns error, never returns messages
+    - Test against the JSON-file adapter
+    - **Validates: Requirements 10.3**
+
+  - [x]* 14.6 Write property test for search results scoping and case-insensitivity (Property 18)
+    - **Property 18: Search results scoping and case-insensitivity**
+    - Create conversations for two userIds with known content, search for userId A — results only contain userId A's conversations
+    - Search with different casing variations of the same query — same set of conversation IDs returned
+    - Test against the JSON-file adapter
+    - **Validates: Requirements 10.4, 10.5**
+
+  - [x]* 14.7 Write property test for search snippet length constraint (Property 19)
+    - **Property 19: Search snippet length constraint**
+    - Create conversations with messages of varying lengths (including > 200 chars), search — all snippets in results are ≤ 200 characters
+    - Test against the JSON-file adapter
+    - **Validates: Requirements 10.6**
+
+  - [x]* 14.8 Update property test for tool filtering (Property 9)
+    - Update `src/__tests__/toolFilter.prop.test.js` to verify `lookup_conversation_history` and `search_user_conversations` are always present in `getToolsByIntent()` output for any non-empty tag set
+    - **Validates: Requirements 10.7**
+
+- [x] 15. Checkpoint — Verify conversation history lookup tools pass tests
+  - Ensure all new property tests (P16–P19) and updated P9 pass
+  - Ensure unit tests for error cases (non-existent conversation, wrong user, empty query, limit clamping) pass
+  - Ask the user if questions arise.
+
+- [x] 16. Implement MongoDB adapters (Phase 2)
+  - [x] 16.1 Add `mongodb` dependency and create `src/db.js`
     - Add `mongodb` to dependencies in `package.json`
     - Create `src/db.js` — MongoDB connection manager
     - Export `connectDB()`, `getDb()`, `closeDB()`
@@ -241,14 +299,15 @@ All features (compaction, preflight, plans, skill catalogue, tool filtering) wor
     - Create indexes on first connect: conversations (`userId`, `id` unique), users (`email` unique with case-insensitive collation, `id` unique), personas (`slug` unique with case-insensitive collation)
     - _Requirements: 1.1, 2.7, 3.7, NFR-2, NFR-3_
 
-  - [ ] 14.2 Create `src/stores/mongo/conversationStore.js`
+  - [x] 16.2 Create `src/stores/mongo/conversationStore.js`
     - Implement `ConversationStore` interface using MongoDB
     - `appendMessage` uses `$push` for atomic message append
     - `savePlanState` uses `$set` on the `plans` field
+    - `searchConversations` uses `$regex` with case-insensitive flag on `messages.content`, scoped by `userId`, sorted by `updatedAt` desc
     - All list/get operations scoped by `userId`
-    - _Requirements: 1.1, 1.2, 1.4, 1.5, 1.6, 9.6, NFR-4_
+    - _Requirements: 1.1, 1.2, 1.4, 1.5, 1.6, 9.6, 10.4, 10.5, 10.6, NFR-4_
 
-  - [ ] 14.3 Create `src/stores/mongo/userStore.js`
+  - [x] 16.3 Create `src/stores/mongo/userStore.js`
     - Implement `UserStore` interface using MongoDB
     - `findUserByEmail` uses case-insensitive regex query
     - `createUser` hashes password with bcrypt before insert
@@ -256,20 +315,20 @@ All features (compaction, preflight, plans, skill catalogue, tool filtering) wor
     - Unique index on `email` prevents duplicates (catch `E11000` → 409 Conflict)
     - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.7_
 
-  - [ ] 14.4 Create `src/stores/mongo/personaStore.js`
+  - [x] 16.4 Create `src/stores/mongo/personaStore.js`
     - Implement `PersonaStore` interface using MongoDB
     - `getPersona` uses case-insensitive lookup on `slug`, returns `null` for missing slugs
     - `appendRecentConversation` uses `$push` for atomic append
     - `upsertPersona` uses `findOneAndUpdate` with `upsert: true`
     - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.7_
 
-  - [ ] 14.5 Update store factory to wire MongoDB adapters
+  - [x] 16.5 Update store factory to wire MongoDB adapters
     - Update `src/stores/index.js` to dynamically import MongoDB adapters when `STORE_BACKEND=mongodb`
     - Call `connectDB()` during `init()` when backend is `mongodb`
     - _Requirements: NFR-2_
 
-- [ ] 15. Implement data migration (Phase 2)
-  - [ ] 15.1 Create `src/migration.js`
+- [x] 17. Implement data migration (Phase 2)
+  - [x] 17.1 Create `src/migration.js`
     - Export `runMigrations()`
     - Check for `data/conversations.json`, `data/users.json`, `data/clients/` directory
     - For each existing source (without `.migrated` counterpart): read, insert into MongoDB, rename to `.migrated`
@@ -279,17 +338,17 @@ All features (compaction, preflight, plans, skill catalogue, tool filtering) wor
     - Only runs when `STORE_BACKEND=mongodb`
     - _Requirements: 1.7, 2.6, 3.6, NFR-1_
 
-  - [ ]* 15.2 Write property test for migration idempotency (Property 3)
+  - [ ]* 17.2 Write property test for migration idempotency (Property 3)
     - **Property 3: Migration idempotency**
     - Run migration twice on the same source data — same set of records in DB, no duplicates
     - Uses `mongodb-memory-server` for testing
     - **Validates: Requirements 1.7, 2.6, 3.6**
 
-  - [ ] 15.3 Update `src/stores/index.js` — call `runMigrations()` during init when `STORE_BACKEND=mongodb`
+  - [x] 17.3 Update `src/stores/index.js` — call `runMigrations()` during init when `STORE_BACKEND=mongodb`
     - After `connectDB()` succeeds, call `runMigrations()` to import any existing flat-file data
     - _Requirements: 1.7, 2.6, 3.6_
 
-- [ ] 16. Final checkpoint — Ensure all tests pass with both backends
+- [x] 18. Final checkpoint — Ensure all tests pass with both backends
   - Ensure all tests pass, ask the user if questions arise.
   - Verify JSON-file adapter works with `STORE_BACKEND=json` (default)
   - Verify MongoDB adapter works with `STORE_BACKEND=mongodb` (requires MongoDB)
@@ -301,10 +360,12 @@ All features (compaction, preflight, plans, skill catalogue, tool filtering) wor
 - Checkpoints ensure incremental validation after each major layer
 - Property tests validate universal correctness properties from the design document using fast-check
 - Unit tests validate specific examples and edge cases
-- Phase 1 (tasks 1–13) ships with JSON-file adapters — no MongoDB dependency needed
-- Phase 2 (tasks 14–16) adds MongoDB adapters — swap in by setting `STORE_BACKEND=mongodb`
-- The `mongodb` npm dependency is only added in Phase 2 (task 14.1) and is only needed when `STORE_BACKEND=mongodb`
-- All features (compaction, preflight, plans, skill catalogue, tool filtering) are backend-agnostic and work with either adapter
+- Phase 1 (tasks 1–15) ships with JSON-file adapters — no MongoDB dependency needed
+- Phase 2 (tasks 16–18) adds MongoDB adapters — swap in by setting `STORE_BACKEND=mongodb`
+- The `mongodb` npm dependency is only added in Phase 2 (task 16.1) and is only needed when `STORE_BACKEND=mongodb`
+- All features (compaction, preflight, plans, skill catalogue, tool filtering, history lookup) are backend-agnostic and work with either adapter
 - Store property tests (P1, P2, P4–P7) run against the JSON-file adapter in Phase 1 and can be re-run against MongoDB adapter in Phase 2
+- History lookup property tests (P16–P19) run against the JSON-file adapter in Phase 1 and can be re-run against MongoDB adapter in Phase 2
 - DB-dependent property tests (P3) use `mongodb-memory-server` and only apply to Phase 2
 - Compaction and preflight tests should mock `runSubAgent` for deterministic responses
+- The `buildHandle()` function in `src/tools/index.js` is updated to accept a `context` parameter with `userId` for history lookup tool scoping

@@ -26,6 +26,8 @@ The goal is to reduce per-request cost, improve response quality under long conv
 - **Plan_Tool**: The set of Anthropic-SDK tool definitions (`create_plan`, `update_plan_step`, `get_plan`) that the agent uses to manage plans.
 - **Skill_Registry**: The full set of skills defined in `skills/registry.json`, surfaced to the agent for discovery and activation.
 - **User_Store**: The DB collection/table that holds user accounts (replacing `data/users.json`).
+- **History_Lookup_Tool**: The `lookup_conversation_history` Anthropic-SDK tool that retrieves the full uncompacted message history for the current conversation from the DB.
+- **Cross_Conversation_Search_Tool**: The `search_user_conversations` Anthropic-SDK tool that searches across other conversations belonging to the same authenticated user.
 
 ---
 
@@ -158,6 +160,23 @@ The goal is to reduce per-request cost, improve response quality under long conv
 6. WHEN a conversation is persisted to the DB, THE plan state SHALL be stored alongside the conversation messages so that plans survive page refreshes.
 7. THE Agent SHALL include the plan tools in every Anthropic API call (similar to `list_skills` and `activate_skill`), so the LLM can create plans for any request type.
 8. THE `create_plan` tool SHALL validate that `steps` is a non-empty array and `title` is a non-empty string; IF validation fails, THEN the tool SHALL return an error message without creating a plan.
+
+### Requirement 10: Conversation History Lookup Tools
+
+**User Story:** As a CS engineer, I want the agent to be able to look up the full uncompacted conversation history and search my other conversations, so that the agent can recover context lost during compaction and draw on relevant past interactions.
+
+#### Acceptance Criteria
+
+1. THE Agent SHALL expose a `lookup_conversation_history` tool that accepts a `conversationId` (string) and an optional `messageRange` object with `start` (integer, zero-based index) and `count` (integer, max messages to return), and returns the full uncompacted messages from the DB for the specified conversation.
+2. WHEN the `lookup_conversation_history` tool is called without a `messageRange`, THE Agent SHALL return all messages from the conversation's full uncompacted history stored in the DB.
+3. THE `lookup_conversation_history` tool SHALL scope the lookup to the authenticated user's `userId`, so that the agent cannot retrieve conversations belonging to a different user.
+4. THE Agent SHALL expose a `search_user_conversations` tool that accepts a `query` (string) and an optional `limit` (integer, default 5, max 20), and returns a list of matching conversations belonging to the authenticated user, each containing `conversationId`, `title`, `createdAt`, `updatedAt`, and a snippet of the matching message content.
+5. WHEN the `search_user_conversations` tool is called, THE DB SHALL perform a case-insensitive text search across all message content in the authenticated user's conversations and return results ordered by relevance.
+6. THE `search_user_conversations` tool SHALL return only conversation metadata and message snippets (max 200 characters per snippet), not full message content, to minimise token usage in the agent's context.
+7. THE Agent SHALL include the `lookup_conversation_history` and `search_user_conversations` tool definitions in every Anthropic API call, so the LLM can use them for any request type.
+8. IF the `lookup_conversation_history` tool is called with a `conversationId` that does not exist or does not belong to the authenticated user, THEN THE Agent SHALL return an error message stating the conversation was not found.
+9. IF the `search_user_conversations` tool returns no matching conversations, THEN THE Agent SHALL return an empty results array with a message indicating no matches were found.
+10. THE Agent SHALL log each invocation of the `lookup_conversation_history` and `search_user_conversations` tools at `[graph:tools]` log level, including the `conversationId` or `query` used.
 
 ---
 

@@ -2,7 +2,7 @@
 
 ## Overview
 
-This design replaces the Capillary Solution Agent's flat-file storage (`data/conversations.json`, `data/users.json`, `data/clients/*.md`) with a **store adapter pattern**, adds in-session context compaction, intent-based dynamic tool and skill loading, an off-topic request gate, full skill catalogue exposure, and agent planning tools.
+This design replaces the Capillary Solution Agent's flat-file storage (`data/conversations.json`, `data/users.json`, `data/clients/*.md`) with a **store adapter pattern**, adds in-session context compaction, intent-based dynamic tool and skill loading, an off-topic request gate, full skill catalogue exposure, agent planning tools, and conversation history lookup tools.
 
 The store adapter pattern defines common interfaces for all persistence operations (`conversationStore`, `userStore`, `personaStore`) and provides two interchangeable implementations:
 
@@ -15,9 +15,10 @@ The changes touch every layer of the stack:
 
 - **Persistence layer** — new `src/stores/` directory with interface definitions, a factory, and two adapter implementations (JSON-file and MongoDB).
 - **LangGraph state machine** — new nodes for context compaction and a modified `classify` node that combines the gate, intent classification, and skill/tool selection into a single parallel pre-flight step.
-- **Tool registry** — `src/tools/index.js` gains a `filterByIntent()` function and three new plan tools.
+- **Tool registry** — `src/tools/index.js` gains a `filterByIntent()` function, three new plan tools, and two new conversation history lookup tools.
 - **Skill loader** — `src/skillLoader.js` gains a `getSkillCatalogue()` function that returns lightweight metadata for all registered skills.
 - **SSE events** — new event types: `plan_update`.
+- **Store interface** — `ConversationStore` gains a `searchConversations()` method for cross-conversation text search.
 
 ### Design Decisions
 
@@ -34,6 +35,7 @@ The changes touch every layer of the stack:
 | Plan storage | LangGraph state channel + DB conversation record | Plans are ephemeral within a conversation turn but persisted alongside messages for reload. |
 | Skill catalogue | Injected into system prompt as a compact list | ~200 tokens for 4 skills. Cheap enough to always include. |
 | `mongodb` dependency | Optional — only needed when `STORE_BACKEND=mongodb` | Keeps the default install lightweight. Add `mongodb` to `package.json` only when ready to use MongoDB. |
+| History lookup tools | Always-on, userId-scoped, reuse existing store methods | The agent needs to recover context lost during compaction and reference past conversations. Reusing `getConversation` for lookup avoids new store methods. `searchConversations` is the only new store method, needed for cross-conversation text search. Always-on because the agent can't predict when it needs history. |
 
 ---
 
@@ -50,6 +52,7 @@ graph TB
     Graph -->|API calls| Anthropic[Anthropic API]
     Graph -->|tool calls| Tools[Tool Registry]
     Graph -->|skill loading| SkillLoader[Skill Loader]
+    Graph -->|history lookup| StoreFactory
     Server -->|read/write| StoreFactory[Store Factory]
     StoreFactory -->|json| JsonAdapter[JSON-File Adapter]
     StoreFactory -->|mongodb| MongoAdapter[MongoDB Adapter]
@@ -206,11 +209,13 @@ export async function appendMessage(id: string, msg: Message): Message
 export async function deleteConversation(id: string, userId: string): boolean
 export async function setCompactedAt(id: string): void
 export async function savePlanState(id: string, plans: Plan[]): void
+export async function searchConversations(userId: string, query: string, limit: number): SearchResult[]
 ```
 
 - All list/get operations are scoped by `userId` (Req 1.4).
 - `appendMessage` is atomic — JSON adapter uses a write queue, MongoDB uses `$push` (Req 1.2).
 - `savePlanState` stores the plan array alongside the conversation document (Req 9.6).
+- `searchConversations` performs case-insensitive text search across message content, returns metadata and snippets (Req 10.4, 10.5, 10.6).
 
 #### `UserStore` Interface
 
@@ -247,6 +252,7 @@ Upgrades the existing `src/store.js` flat-file approach to match the new interfa
 - Adds `userId` field to each conversation and scopes all queries by it.
 - Adds `compactedAt` and `plans` fields.
 - Uses the same write-queue pattern from `src/store.js` to prevent concurrent write corruption.
+- `searchConversations(userId, query, limit)`: iterates all conversations for the given userId, performs case-insensitive substring match on message content, returns metadata + 200-char snippets sorted by `updatedAt` desc (Req 10.4, 10.5, 10.6).
 
 #### `src/stores/json/userStore.js`
 
@@ -270,6 +276,7 @@ Implements the same interfaces using the `mongodb` npm driver. Only loaded when 
 - Uses `getDb().collection('conversations')`.
 - `appendMessage` uses `$push` for atomic message append.
 - `savePlanState` uses `$set` on the `plans` field.
+- `searchConversations(userId, query, limit)`: uses `$regex` with case-insensitive flag on `messages.content`, scoped by `userId`, projects metadata + snippet, sorted by `updatedAt` desc, limited to `limit` results (Req 10.4, 10.5, 10.6).
 
 #### `src/stores/mongo/userStore.js`
 
@@ -437,13 +444,124 @@ export function getToolsByIntent(toolTags: string[]): { definitions: object[], h
 
 - If `toolTags` is empty or null, returns all tools (fallback behaviour, Req 5.4).
 - Otherwise, filters `definitions` to only include tools whose category matches a tag.
-- Always includes `list_skills`, `activate_skill`, and plan tools regardless of tags (Req 5.3, 9.7).
+- Always includes `list_skills`, `activate_skill`, plan tools, and history lookup tools regardless of tags (Req 5.3, 9.7, 10.7).
 - Tool-to-category mapping:
   - `jira`: `get_jira_ticket`, `search_jira`
   - `confluence`: `search_confluence`, `get_confluence_page`
   - `kapa_docs`: `search_kapa_docs`
   - `web_search`: `search_docs_site`
   - `skills`: `list_skills`, `activate_skill` (always included anyway)
+  - `history`: `lookup_conversation_history`, `search_user_conversations` (always included anyway)
+
+### 12. Conversation History Lookup Tools
+
+Two new always-on tools that give the agent access to the full uncompacted conversation history and cross-conversation search. Both are registered in `src/tools/index.js` alongside the existing plan and skill tools.
+
+#### Tool Definitions
+
+```javascript
+const HISTORY_LOOKUP_DEFINITIONS = [
+  {
+    name: 'lookup_conversation_history',
+    description: 'Retrieve the full uncompacted message history for a conversation. Useful for recovering context lost during compaction.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        conversationId: { type: 'string', description: 'The conversation ID to look up' },
+        messageRange: {
+          type: 'object',
+          description: 'Optional range to limit returned messages',
+          properties: {
+            start: { type: 'integer', description: 'Zero-based start index' },
+            count: { type: 'integer', description: 'Maximum number of messages to return' },
+          },
+          required: ['start', 'count'],
+        },
+      },
+      required: ['conversationId'],
+    },
+  },
+  {
+    name: 'search_user_conversations',
+    description: 'Search across your other conversations by keyword. Returns matching conversation metadata and message snippets.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Search query string (case-insensitive)' },
+        limit: { type: 'integer', description: 'Max results to return (default 5, max 20)' },
+      },
+      required: ['query'],
+    },
+  },
+];
+```
+
+#### Handler Logic
+
+Both tool handlers receive the authenticated `userId` from the graph state (passed through from the session) and delegate to the conversation store.
+
+**`lookup_conversation_history` handler:**
+1. Calls `getConversationStore().getConversation(conversationId, userId)` to retrieve the full conversation (userId-scoped).
+2. If the conversation is `null` (not found or wrong user), returns `{ error: "Conversation not found" }`.
+3. If `messageRange` is provided, slices `conversation.messages` from `start` to `start + count`.
+4. If `messageRange` is omitted, returns all messages.
+5. Returns `{ conversationId, messageCount, messages }`.
+
+**`search_user_conversations` handler:**
+1. Clamps `limit` to range [1, 20], defaults to 5 if omitted.
+2. Calls `getConversationStore().searchConversations(userId, query, limit)`.
+3. Returns `{ query, resultCount, results }` where each result contains `conversationId`, `title`, `createdAt`, `updatedAt`, and `snippet` (max 200 chars).
+4. If no results, returns `{ query, resultCount: 0, results: [], message: "No matching conversations found" }`.
+
+#### Store Interface Additions
+
+The `ConversationStore` interface gains one new method to support cross-conversation search:
+
+```typescript
+export async function searchConversations(userId: string, query: string, limit: number): SearchResult[]
+```
+
+The `lookup_conversation_history` tool reuses the existing `getConversation(id, userId)` method — no new store method needed since it already returns the full uncompacted message history.
+
+**JSON-file adapter implementation of `searchConversations`:**
+- Iterates all conversations for the given `userId`.
+- For each conversation, performs a case-insensitive substring match of `query` against all message `content` fields.
+- For each matching conversation, extracts a snippet: the first matching message content, truncated to 200 characters.
+- Returns results sorted by `updatedAt` descending (most recent first), limited to `limit` results.
+
+**MongoDB adapter implementation of `searchConversations`:**
+- Uses `$regex` with case-insensitive flag on `messages.content` field, scoped by `userId`.
+- Projects only metadata fields and the matching message snippet.
+- Limits to `limit` results, sorted by `updatedAt` descending.
+- Future optimisation: create a text index on `messages.content` for `$text` search.
+
+#### Always-On Registration
+
+Both tools are added to the `ALWAYS_INCLUDED_TOOLS` set in `src/tools/index.js`:
+
+```javascript
+const ALWAYS_INCLUDED_TOOLS = new Set([
+  'list_skills',
+  'activate_skill',
+  'create_plan',
+  'update_plan_step',
+  'get_plan',
+  'lookup_conversation_history',    // Req 10.7
+  'search_user_conversations',      // Req 10.7
+]);
+```
+
+The `HISTORY_LOOKUP_DEFINITIONS` array is appended to `allDefinitions` in both `getTools()` and `getToolsByIntent()`, and the `buildHandle()` dispatcher is extended with routing for the two new tool names.
+
+#### Logging
+
+Both tool handlers log at `[graph:tools]` level (Req 10.10):
+- `lookup_conversation_history`: logs `conversationId` and whether a `messageRange` was provided.
+- `search_user_conversations`: logs `query` and `limit`.
+
+#### userId Propagation
+
+The tool handlers need access to the authenticated `userId` to scope store lookups. The `userId` is already available in the LangGraph state (passed from `server.js` → `orchestrator.js` → `graph.js`). The `buildHandle()` function is updated to accept a `context` parameter containing `userId`, which is threaded through from the graph node that invokes tool calls.
 
 ---
 
@@ -560,6 +678,18 @@ These shapes are used by both the JSON-file and MongoDB adapters. The JSON-file 
 }
 ```
 
+### SearchResult Shape (Conversation Search)
+
+```javascript
+{
+  conversationId: String,  // UUID of the matching conversation
+  title: String,           // conversation title
+  createdAt: ISODate,
+  updatedAt: ISODate,
+  snippet: String          // max 200 characters of the matching message content
+}
+```
+
 ### SSE Event Types (additions)
 
 | Event | Payload | When |
@@ -632,9 +762,9 @@ These shapes are used by both the JSON-file and MongoDB adapters. The JSON-file 
 
 ### Property 9: Tool filtering respects tags and always includes meta-tools
 
-*For any* non-empty set of tool category tags, `getToolsByIntent(tags)` SHALL return tool definitions where: (a) every non-meta tool belongs to a tagged category, (b) `list_skills` and `activate_skill` are always present, and (c) `create_plan`, `update_plan_step`, and `get_plan` are always present.
+*For any* non-empty set of tool category tags, `getToolsByIntent(tags)` SHALL return tool definitions where: (a) every non-meta tool belongs to a tagged category, (b) `list_skills` and `activate_skill` are always present, (c) `create_plan`, `update_plan_step`, and `get_plan` are always present, and (d) `lookup_conversation_history` and `search_user_conversations` are always present.
 
-**Validates: Requirements 5.2, 5.3, 9.7**
+**Validates: Requirements 5.2, 5.3, 9.7, 10.7**
 
 ### Property 10: Skill loading respects intent classification
 
@@ -671,6 +801,30 @@ These shapes are used by both the JSON-file and MongoDB adapters. The JSON-file 
 *For any* input where `title` is empty/whitespace or `steps` is an empty array, `createPlan` SHALL return an error and SHALL NOT create a plan object.
 
 **Validates: Requirements 9.8**
+
+### Property 16: History lookup round-trip
+
+*For any* conversation with N messages (N ≥ 1) belonging to a given userId, calling `lookup_conversation_history` with that conversationId and userId SHALL return all N messages in order with content preserved. When called with a `messageRange` of `{ start: S, count: C }`, the tool SHALL return exactly `min(C, N - S)` messages starting from index S.
+
+**Validates: Requirements 10.1, 10.2**
+
+### Property 17: History lookup user scoping
+
+*For any* two distinct userIds A and B, and any conversation belonging to userId A, calling `lookup_conversation_history` with userId B SHALL return an error indicating the conversation was not found — never the conversation's messages.
+
+**Validates: Requirements 10.3**
+
+### Property 18: Search results scoping and case-insensitivity
+
+*For any* userId and any search query string, `searchConversations(userId, query, limit)` SHALL return only conversations belonging to that userId. Furthermore, searching with any casing variation of the same query SHALL return the same set of conversation IDs.
+
+**Validates: Requirements 10.4, 10.5**
+
+### Property 19: Search snippet length constraint
+
+*For any* search result returned by `searchConversations`, the `snippet` field SHALL be at most 200 characters in length.
+
+**Validates: Requirements 10.6**
 
 ---
 
@@ -713,6 +867,19 @@ These shapes are used by both the JSON-file and MongoDB adapters. The JSON-file 
 | `update_plan_step` with out-of-bounds stepIndex | Return error string: `"Step index {i} out of bounds (plan has {n} steps)"` | Defensive |
 | `update_plan_step` with invalid status | Return error string: `"Invalid status: {s}. Must be one of: pending, in_progress, completed, skipped"` | Defensive |
 
+### History Lookup Tool Errors
+
+| Scenario | Behaviour | Requirement |
+|---|---|---|
+| `lookup_conversation_history` with non-existent conversationId | Return `{ error: "Conversation not found" }` | 10.8 |
+| `lookup_conversation_history` with conversationId belonging to another user | Return `{ error: "Conversation not found" }` (same as non-existent — no information leakage) | 10.3, 10.8 |
+| `lookup_conversation_history` with `messageRange.start` beyond message count | Return `{ conversationId, messageCount: 0, messages: [] }` (empty slice) | Defensive |
+| `lookup_conversation_history` with negative `start` or `count` | Clamp to 0; return empty or full range as appropriate | Defensive |
+| `search_user_conversations` with empty query string | Return `{ error: "Query must be a non-empty string" }` | Defensive |
+| `search_user_conversations` with no matching results | Return `{ query, resultCount: 0, results: [], message: "No matching conversations found" }` | 10.9 |
+| `search_user_conversations` with `limit` > 20 | Clamp to 20 | Defensive |
+| `search_user_conversations` with `limit` < 1 or non-integer | Default to 5 | Defensive |
+
 ### Migration Errors
 
 | Scenario | Behaviour | Requirement |
@@ -748,6 +915,8 @@ Each property test file will be tagged with a comment referencing the design pro
 | `src/__tests__/skillLoading.prop.test.js` | P10, P12 | Intent-based skill loading, catalogue completeness |
 | `src/__tests__/gate.prop.test.js` | P11 | Confidence threshold enforcement |
 | `src/__tests__/planManager.prop.test.js` | P13, P14, P15 | Update isolation, round-trip, input validation |
+| `src/__tests__/historyLookup.prop.test.js` | P16, P17 | History lookup round-trip, user scoping |
+| `src/__tests__/conversationSearch.prop.test.js` | P18, P19 | Search scoping, case-insensitivity, snippet length |
 
 **Testing approach for store properties (P1–P7):** Property tests run against the store interface. For Phase 1 (JSON-file adapter), tests use the JSON adapter directly. For Phase 2 (MongoDB adapter), the same tests can be re-run against the MongoDB adapter using `mongodb-memory-server` or `Map`-based stubs. The property tests validate the store contract, not a specific backend.
 
@@ -769,6 +938,8 @@ Unit tests cover specific examples, edge cases, and error conditions that don't 
 | `src/__tests__/skillLoader.test.js` | (existing) + catalogue generation from registry, dynamic refresh |
 | `src/__tests__/toolFilter.test.js` | Empty tag fallback to all tools, unknown tag ignored |
 | `src/__tests__/storeFactory.test.js` | Factory returns correct adapter based on `STORE_BACKEND` env var |
+| `src/__tests__/historyLookup.test.js` | Non-existent conversation error, wrong-user error, empty messageRange, negative range clamping, logging |
+| `src/__tests__/conversationSearch.test.js` | Empty query error, no results message, limit clamping, snippet truncation for long messages, logging |
 
 ### Integration Tests
 
@@ -782,6 +953,8 @@ Integration tests verify end-to-end flows that span multiple components:
 | Compaction in graph context | Long conversation triggers compaction, store retains full history |
 | Gate → refusal flow | Off-topic message → no graph invocation → refusal SSE events |
 | Plan lifecycle in conversation | Create plan → update steps → persist → reload |
+| History lookup after compaction | Long conversation → compaction occurs → lookup tool returns full uncompacted history |
+| Cross-conversation search | Create multiple conversations → search by keyword → verify scoped results with snippets |
 
 ### Test Configuration
 

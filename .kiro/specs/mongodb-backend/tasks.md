@@ -1,0 +1,47 @@
+# Tasks
+
+- [x] 1. Add mongodb dependency and update environment configuration
+  - [x] 1.1 Add `mongodb` (^6.12.0) to package.json production dependencies and run npm install
+  - [x] 1.2 Update `.env.example` with `MONGODB_USERNAME`, `MONGODB_PASSWORD` variables and descriptive comments for the Atlas connection string alternative
+- [x] 2. Implement MongoDB connection manager (`src/db.js`)
+  - [x] 2.1 Create `src/db.js` with `connectDB()` that reads `MONGODB_URI` or composes from `MONGODB_USERNAME`+`MONGODB_PASSWORD`, connects via MongoClient, selects database from `MONGODB_DB_NAME` (default: `capillary_agent`), and creates all indexes
+  - [x] 2.2 Implement `getDb()` that returns cached Db instance or throws if not connected
+  - [x] 2.3 Implement `closeDB()` that gracefully closes the MongoClient connection
+  - [x] 2.4 Add fatal exit (process.exit(1)) when env vars are missing or connection fails, with sanitised URI in logs
+- [x] 3. Implement MongoDB conversation store adapter (`src/stores/mongo/conversationStore.js`)
+  - [x] 3.1 Implement `createConversation(userId, firstMessage)` — insertOne with UUID, title from first 80 chars, timestamps, empty messages/plans arrays
+  - [x] 3.2 Implement `listConversations(userId)` — find by userId, sort by updatedAt desc, project out messages and plans
+  - [x] 3.3 Implement `getConversation(id, userId)` — findOne scoped by both id and userId
+  - [x] 3.4 Implement `appendMessage(id, msg)` — atomic $push to messages array, $set updatedAt, add timestamp if missing, throw if conversation not found
+  - [x] 3.5 Implement `deleteConversation(id, userId)` — deleteOne scoped by id and userId, return boolean
+  - [x] 3.6 Implement `setCompactedAt(id)` and `savePlanState(id, plans)` — $set operations
+  - [x] 3.7 Implement `searchConversations(userId, query, limit)` — $regex case-insensitive search on messages.content, extract snippet (max 200 chars), sort by updatedAt desc
+- [x] 4. Implement MongoDB user store adapter (`src/stores/mongo/userStore.js`)
+  - [x] 4.1 Implement `createUser(opts)` — bcrypt hash password (12 rounds), insertOne with full user model fields, catch E11000 → throw "User already exists"
+  - [x] 4.2 Implement `findUserByEmail(email)` — case-insensitive lookup via regex
+  - [x] 4.3 Implement `findUserById(id)`, `listUsers()`, `deleteUser(id)` — standard CRUD operations
+  - [x] 4.4 Implement `updateUser(id, fields)` — findOneAndUpdate with $set, return updated doc or null
+  - [x] 4.5 Implement `upsertSsoUser(email)` — findOneAndUpdate with upsert:true, $setOnInsert for defaults (passwordHash:null, role:"user", mustChangePassword:false, createdBy:"sso")
+- [x] 5. Implement MongoDB persona store adapter (`src/stores/mongo/personaStore.js`)
+  - [x] 5.1 Implement `getPersona(slug)` — case-insensitive slug lookup via regex
+  - [x] 5.2 Implement `appendRecentConversation(slug, entry)` — atomic $push, throw if persona not found
+  - [x] 5.3 Implement `upsertPersona(slug, fields)` — findOneAndUpdate with upsert:true, $setOnInsert for defaults, $set for updates
+- [x] 6. Implement MongoDB audit store adapter (`src/stores/mongo/auditStore.js`)
+  - [x] 6.1 Implement `appendEntry(entry)` — insertOne into audit collection
+  - [x] 6.2 Implement `listEntries(filter?)` — find with optional event/actor/target filter, sort by timestamp desc
+- [x] 7. Implement data migration utility (`src/migration.js`)
+  - [x] 7.1 Implement `runMigrations()` — check for data/*.json files, parse, insert into MongoDB collections, rename to .json.migrated
+  - [x] 7.2 Add idempotency check — skip files that already have .migrated counterparts
+  - [x] 7.3 Add error handling — skip corrupt JSON files without renaming, log partial insert failures without renaming, skip empty files gracefully
+- [x] 8. Update store factory (`src/stores/index.js`)
+  - [x] 8.1 Add MongoDB audit store import and initialisation in the mongodb branch
+  - [x] 8.2 Add `runMigrations()` call after connectDB() in the mongodb branch
+- [x] 9. Write tests
+  - [x] 9.1 Add `mongodb-memory-server` (^10.0.0) to devDependencies and run npm install
+  - [x] 9.2 Write unit tests for `src/db.js` — connection lifecycle, URI composition, missing env vars, getDb before connect
+  - [x] 9.3 Write unit tests for MongoDB conversation store — CRUD operations, appendMessage on non-existent, searchConversations
+  - [x] 9.4 Write unit tests for MongoDB user store — createUser with bcrypt, duplicate email E11000, findByEmail case-insensitive, upsertSsoUser, updateUser, deleteUser
+  - [x] 9.5 Write unit tests for MongoDB persona store — getPersona case-insensitive, appendRecentConversation, upsertPersona, missing persona throws
+  - [x] 9.6 Write unit tests for MongoDB audit store — appendEntry, listEntries with and without filter
+  - [x] 9.7 Write unit tests for migration — successful migration, idempotency skip, corrupt JSON handling, empty files
+  - [x] 9.8 Write unit test for store factory — verify audit store initialised for mongodb backend

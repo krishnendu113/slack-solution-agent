@@ -19,6 +19,7 @@ import { kapaDefinitions, handleKapaTool } from './kapa.js';
 import { webSearchDefinitions, handleWebSearchTool } from './webSearch.js';
 import { loadSkill, listSkills } from '../skillLoader.js';
 import { createPlan, updatePlanStep, getPlan } from '../planManager.js';
+import { getConversationStore } from '../stores/index.js';
 
 // ─── Skill Tool Definitions ───────────────────────────────────────────────────
 
@@ -82,6 +83,43 @@ const PLAN_DEFINITIONS = [
   },
 ];
 
+// ─── History Lookup Tool Definitions ──────────────────────────────────────────
+
+const HISTORY_LOOKUP_DEFINITIONS = [
+  {
+    name: 'lookup_conversation_history',
+    description: 'Retrieve the full uncompacted message history for a conversation. Useful for recovering context lost during compaction.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        conversationId: { type: 'string', description: 'The conversation ID to look up' },
+        messageRange: {
+          type: 'object',
+          description: 'Optional range to limit returned messages',
+          properties: {
+            start: { type: 'integer', description: 'Zero-based start index' },
+            count: { type: 'integer', description: 'Maximum number of messages to return' },
+          },
+          required: ['start', 'count'],
+        },
+      },
+      required: ['conversationId'],
+    },
+  },
+  {
+    name: 'search_user_conversations',
+    description: 'Search across your other conversations by keyword. Returns matching conversation metadata and message snippets.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Search query string (case-insensitive)' },
+        limit: { type: 'integer', description: 'Max results to return (default 5, max 20)' },
+      },
+      required: ['query'],
+    },
+  },
+];
+
 // ─── Tool-to-Category Mapping ─────────────────────────────────────────────────
 
 /**
@@ -94,6 +132,7 @@ const TOOL_CATEGORY_MAP = {
   kapa_docs: ['search_kapa_docs'],
   web_search: ['search_docs_site'],
   skills: ['list_skills', 'activate_skill'],
+  history: ['lookup_conversation_history', 'search_user_conversations'],
 };
 
 /** Tool names that are always included regardless of intent tags. */
@@ -103,6 +142,8 @@ const ALWAYS_INCLUDED_TOOLS = new Set([
   'create_plan',
   'update_plan_step',
   'get_plan',
+  'lookup_conversation_history',
+  'search_user_conversations',
 ]);
 
 // ─── Main Export ──────────────────────────────────────────────────────────────
@@ -122,6 +163,7 @@ export function getTools() {
     ...kapaDefinitions,
     ...webSearchDefinitions,
     ...SKILL_DEFINITIONS,
+    ...HISTORY_LOOKUP_DEFINITIONS,
   ];
 
   /**
@@ -182,19 +224,22 @@ export function getTools() {
 /**
  * Returns a filtered tool set based on intent classifier tags.
  *
- * Always includes skill meta-tools (list_skills, activate_skill) and
- * plan tools (create_plan, update_plan_step, get_plan) regardless of tags.
+ * Always includes skill meta-tools (list_skills, activate_skill),
+ * plan tools (create_plan, update_plan_step, get_plan), and
+ * history lookup tools (lookup_conversation_history, search_user_conversations)
+ * regardless of tags.
  *
  * If `toolTags` is empty, null, or undefined, returns all tools (fallback).
  *
  * @param {string[]|null|undefined} toolTags - Category tags from the intent classifier
+ * @param {{ userId?: string }} [context] - Optional context with userId for scoping history lookups
  * @returns {{ definitions: object[], handle: (name: string, input: object) => Promise<string> }}
  */
-export function getToolsByIntent(toolTags) {
+export function getToolsByIntent(toolTags, context) {
   const jiraOk = !!(process.env.JIRA_BASE_URL && process.env.JIRA_EMAIL && process.env.JIRA_API_TOKEN);
   const confOk = !!(process.env.CONFLUENCE_BASE_URL && process.env.JIRA_EMAIL && process.env.CONFLUENCE_API_TOKEN);
 
-  // Build the full set of available definitions (same as getTools, plus plan tools)
+  // Build the full set of available definitions (same as getTools, plus plan + history tools)
   const allDefinitions = [
     ...(jiraOk ? jiraDefinitions : []),
     ...(confOk ? confluenceDefinitions : []),
@@ -202,11 +247,12 @@ export function getToolsByIntent(toolTags) {
     ...webSearchDefinitions,
     ...SKILL_DEFINITIONS,
     ...PLAN_DEFINITIONS,
+    ...HISTORY_LOOKUP_DEFINITIONS,
   ];
 
   // If toolTags is empty/null/undefined, return all tools (fallback)
   if (!toolTags || !Array.isArray(toolTags) || toolTags.length === 0) {
-    return { definitions: allDefinitions, handle: buildHandle() };
+    return { definitions: allDefinitions, handle: buildHandle(context) };
   }
 
   // Build the set of tool names allowed by the provided tags
@@ -220,16 +266,19 @@ export function getToolsByIntent(toolTags) {
 
   const definitions = allDefinitions.filter(def => allowedNames.has(def.name));
 
-  return { definitions, handle: buildHandle() };
+  return { definitions, handle: buildHandle(context) };
 }
 
 /**
  * Builds the unified handle() dispatcher used by both getTools() and getToolsByIntent().
  * Extracted to avoid duplication.
  *
+ * @param {{ userId?: string }} [context] - Optional context with userId for scoping history lookups
  * @returns {(name: string, input: object) => Promise<string>}
  */
-function buildHandle() {
+function buildHandle(context) {
+  const userId = context?.userId || null;
+
   async function handle(name, input) {
     // Jira
     if (name === 'get_jira_ticket' || name === 'search_jira' || name === 'add_jira_comment') {
@@ -272,6 +321,41 @@ function buildHandle() {
       const plan = getPlan(input.planId);
       if (!plan) return JSON.stringify({ error: `Plan not found: ${input.planId}` });
       return JSON.stringify(plan, null, 2);
+    }
+
+    // History lookup tools
+    if (name === 'lookup_conversation_history') {
+      console.log(`[graph:tools] lookup_conversation_history conversationId=${input.conversationId} messageRange=${input.messageRange ? JSON.stringify(input.messageRange) : 'none'}`);
+      try {
+        const store = getConversationStore();
+        const conversation = store.getConversation(input.conversationId, userId);
+        if (!conversation) {
+          return JSON.stringify({ error: 'Conversation not found' });
+        }
+        let messages = conversation.messages;
+        if (input.messageRange) {
+          const { start, count } = input.messageRange;
+          messages = messages.slice(start, start + count);
+        }
+        return JSON.stringify({ conversationId: input.conversationId, messageCount: messages.length, messages }, null, 2);
+      } catch (err) {
+        return JSON.stringify({ error: `Failed to look up conversation: ${err.message}` });
+      }
+    }
+
+    if (name === 'search_user_conversations') {
+      const limit = Math.max(1, Math.min(20, input.limit ?? 5));
+      console.log(`[graph:tools] search_user_conversations query="${input.query}" limit=${limit}`);
+      try {
+        const store = getConversationStore();
+        const results = store.searchConversations(userId, input.query, limit);
+        if (results.length === 0) {
+          return JSON.stringify({ query: input.query, resultCount: 0, results: [], message: 'No matching conversations found' });
+        }
+        return JSON.stringify({ query: input.query, resultCount: results.length, results }, null, 2);
+      } catch (err) {
+        return JSON.stringify({ error: `Failed to search conversations: ${err.message}` });
+      }
     }
 
     return `Unknown tool: ${name}`;

@@ -19,6 +19,9 @@ let userStore = null;
 /** @type {import('./json/personaStore.js') | import('./mongo/personaStore.js') | null} */
 let personaStore = null;
 
+/** @type {import('./json/auditStore.js') | import('./mongo/auditStore.js') | null} */
+let auditStore = null;
+
 const VALID_BACKENDS = ['json', 'mongodb'];
 
 /**
@@ -37,27 +40,35 @@ export async function init() {
     const convMod = await import('./json/conversationStore.js');
     const userMod = await import('./json/userStore.js');
     const personaMod = await import('./json/personaStore.js');
+    const auditMod = await import('./json/auditStore.js');
 
     conversationStore = convMod;
     userStore = userMod;
     personaStore = personaMod;
+    auditStore = auditMod;
 
     await conversationStore.init();
     await userStore.init();
     await personaStore.init();
+    await auditStore.init();
 
     console.log('[stores] Initialised with JSON-file backend');
   } else if (backend === 'mongodb') {
     const { connectDB } = await import('../db.js');
     await connectDB();
 
+    const { runMigrations } = await import('../migration.js');
+    await runMigrations();
+
     const convMod = await import('./mongo/conversationStore.js');
     const userMod = await import('./mongo/userStore.js');
     const personaMod = await import('./mongo/personaStore.js');
+    const auditMod = await import('./mongo/auditStore.js');
 
     conversationStore = convMod;
     userStore = userMod;
     personaStore = personaMod;
+    auditStore = auditMod;
 
     console.log('[stores] Initialised with MongoDB backend');
   }
@@ -88,4 +99,13 @@ export function getUserStore() {
 export function getPersonaStore() {
   if (!personaStore) throw new Error('[stores] Not initialised — call init() first');
   return personaStore;
+}
+
+/**
+ * Returns the audit store adapter.
+ * @returns {import('./json/auditStore.js') | import('./mongo/auditStore.js')}
+ */
+export function getAuditStore() {
+  if (!auditStore) throw new Error('[stores] Not initialised — call init() first');
+  return auditStore;
 }

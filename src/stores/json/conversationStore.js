@@ -165,6 +165,52 @@ export async function savePlanState(id, plans) {
 }
 
 /**
+ * Searches conversations for a given user by case-insensitive substring match across message content.
+ * Returns matching conversations with a snippet of the first matching message, sorted by updatedAt desc.
+ *
+ * @param {string} userId — owner of the conversations to search
+ * @param {string} query — substring to search for (case-insensitive)
+ * @param {number} limit — max number of results to return
+ * @returns {Array<{ conversationId: string, title: string, createdAt: string, updatedAt: string, snippet: string }>}
+ */
+export function searchConversations(userId, query, limit) {
+  if (!query) return [];
+
+  const lowerQuery = query.toLowerCase();
+
+  const matches = [];
+
+  for (const conv of Object.values(data.conversations)) {
+    if (conv.userId !== userId) continue;
+
+    // Find the first message whose content matches the query
+    let snippet = null;
+    for (const msg of conv.messages) {
+      if (msg.content && msg.content.toLowerCase().includes(lowerQuery)) {
+        snippet = msg.content.length > 200 ? msg.content.slice(0, 200) : msg.content;
+        break;
+      }
+    }
+
+    if (snippet !== null) {
+      matches.push({
+        conversationId: conv.id,
+        title: conv.title,
+        createdAt: conv.createdAt,
+        updatedAt: conv.updatedAt,
+        snippet,
+      });
+    }
+  }
+
+  // Sort by updatedAt descending (most recent first)
+  matches.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+
+  // Limit results
+  return matches.slice(0, limit);
+}
+
+/**
  * Waits for any pending writes to complete.
  * Useful for testing to ensure data is flushed before assertions.
  * @returns {Promise<void>}
