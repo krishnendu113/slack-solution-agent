@@ -330,6 +330,117 @@
     .send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
     @media (max-width: 768px) { .sidebar { display: none; } }
+
+    /* ─── Password Change Modal ───────────────── */
+    .modal-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.5);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-backdrop.visible { display: flex; }
+    .modal-card {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 36px 32px;
+      width: 100%;
+      max-width: 400px;
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.2);
+      position: relative;
+    }
+    [data-theme="dark"] .modal-card {
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+    }
+    .modal-close {
+      position: absolute;
+      top: 12px;
+      right: 14px;
+      background: none;
+      border: none;
+      font-size: 20px;
+      cursor: pointer;
+      color: var(--text-muted);
+      padding: 4px 8px;
+      border-radius: 6px;
+      transition: background 0.15s, color 0.15s;
+      line-height: 1;
+    }
+    .modal-close:hover { background: var(--bg-input); color: var(--text-primary); }
+    .modal-card h2 {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 4px;
+      color: var(--text-primary);
+    }
+    .modal-card .modal-subtitle {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-bottom: 20px;
+    }
+    .modal-card .form-group {
+      margin-bottom: 14px;
+      text-align: left;
+    }
+    .modal-card .form-group label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 6px;
+    }
+    .modal-card .form-group input {
+      width: 100%;
+      padding: 10px 14px;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text-primary);
+      font-size: 14px;
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .modal-card .form-group input:focus { border-color: var(--accent); }
+    .modal-card .form-group input::placeholder { color: var(--text-muted); }
+    .modal-card .password-hint {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 6px;
+      line-height: 1.5;
+    }
+    .modal-card .error-msg {
+      color: var(--danger);
+      font-size: 13px;
+      margin-bottom: 12px;
+      min-height: 18px;
+    }
+    .modal-card .success-msg {
+      color: var(--success);
+      font-size: 13px;
+      margin-bottom: 12px;
+      min-height: 18px;
+    }
+    .modal-card .modal-btn {
+      width: 100%;
+      padding: 11px;
+      background: var(--accent);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+      font-family: inherit;
+    }
+    .modal-card .modal-btn:hover { background: var(--accent-hover); }
+    .modal-card .modal-btn:disabled { opacity: 0.6; cursor: not-allowed; }
   </style>
 </head>
 <body>
@@ -341,7 +452,11 @@
     <div class="conv-list" id="convList"></div>
     <div style="padding:10px 14px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:4px">
       <span id="userEmail" style="font-size:11px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
-      <a href="/api/auth/logout" style="font-size:12px;color:var(--text-muted);text-decoration:none">Sign out</a>
+      <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+        <a href="#" onclick="openChangePwModal(); return false;" style="font-size:12px;color:var(--text-muted);text-decoration:none">Change Password</a>
+        <a href="/admin.html" id="adminLink" style="font-size:12px;color:var(--accent);text-decoration:none;display:none">Admin</a>
+        <a href="/api/auth/logout" style="font-size:12px;color:var(--text-muted);text-decoration:none">Sign out</a>
+      </div>
     </div>
   </aside>
 
@@ -384,6 +499,33 @@
     </div>
   </main>
 
+  <!-- Password Change Modal -->
+  <div class="modal-backdrop" id="changePwModal">
+    <div class="modal-card">
+      <button class="modal-close" onclick="closeChangePwModal()" title="Close">&times;</button>
+      <h2>Change Password</h2>
+      <div class="modal-subtitle">Update your account password</div>
+      <form id="changePwForm" onsubmit="return handleChangePw(event)">
+        <div class="form-group">
+          <label for="cpCurrentPw">Current Password</label>
+          <input type="password" id="cpCurrentPw" placeholder="Enter current password" autocomplete="current-password" required>
+        </div>
+        <div class="form-group">
+          <label for="cpNewPw">New Password</label>
+          <input type="password" id="cpNewPw" placeholder="Enter new password" autocomplete="new-password" required>
+          <div class="password-hint">Min 8 characters, uppercase, lowercase, digit, special character</div>
+        </div>
+        <div class="form-group">
+          <label for="cpConfirmPw">Confirm New Password</label>
+          <input type="password" id="cpConfirmPw" placeholder="Confirm new password" autocomplete="new-password" required>
+        </div>
+        <div class="error-msg" id="cpError"></div>
+        <div class="success-msg" id="cpSuccess"></div>
+        <button type="submit" class="modal-btn" id="cpSubmitBtn">Change Password</button>
+      </form>
+    </div>
+  </div>
+
 <script>
 // ─── Theme (D1) ──────────────────────────────────────────────────────────────
 function toggleTheme() {
@@ -422,9 +564,13 @@ loadConversations();
   try {
     const r = await fetch('/api/auth/me');
     if (!r.ok) { window.location.href = '/login.html'; return; }
-    const { email } = await r.json();
+    const { email, role } = await r.json();
     const el = document.getElementById('userEmail');
     if (el) el.textContent = email;
+    if (role === 'admin') {
+      const adminLink = document.getElementById('adminLink');
+      if (adminLink) adminLink.style.display = 'inline';
+    }
   } catch { /* ignore network errors */ }
 })();
 
@@ -1009,6 +1155,77 @@ function timeAgo(iso) {
   const days = Math.floor(hrs / 24);
   if (days < 30) return `${days}d ago`;
   return new Date(iso).toLocaleDateString();
+}
+
+// ─── Password Change Modal ───────────────────────────────────────────────────
+function openChangePwModal() {
+  document.getElementById('cpCurrentPw').value = '';
+  document.getElementById('cpNewPw').value = '';
+  document.getElementById('cpConfirmPw').value = '';
+  document.getElementById('cpError').textContent = '';
+  document.getElementById('cpSuccess').textContent = '';
+  document.getElementById('cpSubmitBtn').disabled = false;
+  document.getElementById('cpSubmitBtn').textContent = 'Change Password';
+  document.getElementById('changePwModal').classList.add('visible');
+}
+
+function closeChangePwModal() {
+  document.getElementById('changePwModal').classList.remove('visible');
+}
+
+// Close modal on backdrop click
+document.getElementById('changePwModal').addEventListener('click', function(e) {
+  if (e.target === this) closeChangePwModal();
+});
+
+async function handleChangePw(e) {
+  e.preventDefault();
+  const btn = document.getElementById('cpSubmitBtn');
+  const errorEl = document.getElementById('cpError');
+  const successEl = document.getElementById('cpSuccess');
+  const currentPassword = document.getElementById('cpCurrentPw').value;
+  const newPassword = document.getElementById('cpNewPw').value;
+  const confirmPassword = document.getElementById('cpConfirmPw').value;
+
+  errorEl.textContent = '';
+  successEl.textContent = '';
+
+  if (newPassword !== confirmPassword) {
+    errorEl.textContent = 'Passwords do not match.';
+    return false;
+  }
+
+  if (newPassword.length < 8) {
+    errorEl.textContent = 'Password must be at least 8 characters.';
+    return false;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Changing...';
+
+  try {
+    const res = await fetch('/api/auth/change-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ currentPassword, newPassword }),
+    });
+
+    if (res.ok) {
+      successEl.textContent = 'Password changed successfully!';
+      errorEl.textContent = '';
+      setTimeout(() => closeChangePwModal(), 1500);
+    } else {
+      const data = await res.json().catch(() => ({}));
+      errorEl.textContent = data.error || 'Failed to change password.';
+    }
+  } catch {
+    errorEl.textContent = 'Connection error. Please try again.';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Change Password';
+  }
+
+  return false;
 }
 </script>
 </body>

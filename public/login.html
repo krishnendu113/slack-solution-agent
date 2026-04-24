@@ -199,6 +199,31 @@
       transform: translateX(3px);
       text-decoration: underline;
     }
+
+    /* Password change form (forced) */
+    .change-pw-section { display: none; }
+    .change-pw-section.visible { display: block; }
+    .change-pw-section h2 {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--accent);
+      margin-bottom: 4px;
+    }
+    .change-pw-section .subtitle {
+      margin-bottom: 24px;
+    }
+    .password-hint {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 6px;
+      line-height: 1.5;
+    }
+    .success-msg {
+      color: #16a34a;
+      font-size: 13px;
+      margin-bottom: 16px;
+      min-height: 20px;
+    }
   </style>
 </head>
 <body>
@@ -220,6 +245,26 @@
       <div class="error-msg" id="error"></div>
       <button type="submit" class="login-btn" id="loginBtn">Sign In</button>
     </form>
+
+    <!-- Forced Password Change Section -->
+    <div class="change-pw-section" id="changePwSection">
+      <h2>Change Your Password</h2>
+      <div class="subtitle">Your password must be changed before continuing</div>
+
+      <form id="changePwForm" onsubmit="return handleChangePassword(event)">
+        <div class="form-group">
+          <label for="newPassword">New Password</label>
+          <input type="password" id="newPassword" placeholder="Enter new password" autocomplete="new-password" required>
+          <div class="password-hint">Min 8 characters, uppercase, lowercase, digit, special character</div>
+        </div>
+        <div class="form-group">
+          <label for="confirmPassword">Confirm New Password</label>
+          <input type="password" id="confirmPassword" placeholder="Confirm new password" autocomplete="new-password" required>
+        </div>
+        <div class="error-msg" id="changePwError"></div>
+        <button type="submit" class="login-btn" id="changePwBtn">Change Password</button>
+      </form>
+    </div>
 
     <div id="ssoSection" style="display:none">
       <div class="divider">or continue with</div>
@@ -282,6 +327,9 @@ function toggleTheme() {
   } catch { /* silently hide SSO on network error */ }
 })();
 
+// Store login password temporarily for forced change flow
+let _loginPassword = null;
+
 async function handleLogin(e) {
   e.preventDefault();
   const btn = document.getElementById('loginBtn');
@@ -301,7 +349,17 @@ async function handleLogin(e) {
     });
 
     if (res.ok) {
-      window.location.href = '/';
+      const data = await res.json();
+      if (data.mustChangePassword) {
+        // Store the login password in memory for the change-password call
+        _loginPassword = pass;
+        // Hide login form and SSO section, show change password form
+        document.getElementById('loginForm').style.display = 'none';
+        document.getElementById('ssoSection').style.display = 'none';
+        document.getElementById('changePwSection').classList.add('visible');
+      } else {
+        window.location.href = '/';
+      }
     } else {
       const data = await res.json().catch(() => ({}));
       error.textContent = data.error || 'Invalid credentials.';
@@ -312,6 +370,52 @@ async function handleLogin(e) {
     btn.disabled = false;
     btn.textContent = 'Sign In';
   }
+}
+
+async function handleChangePassword(e) {
+  e.preventDefault();
+  const btn = document.getElementById('changePwBtn');
+  const error = document.getElementById('changePwError');
+  const newPassword = document.getElementById('newPassword').value;
+  const confirmPassword = document.getElementById('confirmPassword').value;
+
+  error.textContent = '';
+
+  if (newPassword !== confirmPassword) {
+    error.textContent = 'Passwords do not match.';
+    return false;
+  }
+
+  if (newPassword.length < 8) {
+    error.textContent = 'Password must be at least 8 characters.';
+    return false;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Changing...';
+
+  try {
+    const res = await fetch('/api/auth/change-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ currentPassword: _loginPassword, newPassword }),
+    });
+
+    if (res.ok) {
+      _loginPassword = null;
+      window.location.href = '/';
+    } else {
+      const data = await res.json().catch(() => ({}));
+      error.textContent = data.error || 'Failed to change password.';
+    }
+  } catch {
+    error.textContent = 'Connection error. Please try again.';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Change Password';
+  }
+
+  return false;
 }
 </script>
 </body>

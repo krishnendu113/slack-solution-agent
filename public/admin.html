@@ -1,0 +1,751 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>User Management — Solution Agent</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%230066cc'/><text x='16' y='22' font-family='system-ui,sans-serif' font-size='16' font-weight='700' fill='white' text-anchor='middle'>SA</text></svg>">
+  <script>(function(){ var t=localStorage.getItem('theme'); if(t==='dark') document.documentElement.setAttribute('data-theme','dark'); })();</script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #f7f7f8;
+      --card: #ffffff;
+      --border: #e5e7eb;
+      --input-bg: #f3f4f6;
+      --text: #1a1a1a;
+      --text-muted: #6b7280;
+      --accent: #0066cc;
+      --accent-hover: #0052a3;
+      --danger: #dc2626;
+      --danger-hover: #b91c1c;
+      --success: #16a34a;
+      --divider: #e5e7eb;
+      --placeholder: #9ca3af;
+      --shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+      --bg-hover: #f9fafb;
+    }
+
+    [data-theme="dark"] {
+      --bg: #1a1a2e;
+      --card: #16213e;
+      --border: #1e293b;
+      --input-bg: #1e2a4a;
+      --text: #e2e8f0;
+      --text-muted: #94a3b8;
+      --accent: #3b82f6;
+      --accent-hover: #2563eb;
+      --danger: #ef4444;
+      --danger-hover: #dc2626;
+      --success: #22c55e;
+      --divider: #2d3a55;
+      --placeholder: #475569;
+      --shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+      --bg-hover: #1e2a4a;
+    }
+
+    html, body { height: 100%; }
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      padding: 40px 20px;
+    }
+
+    .admin-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 40px;
+      width: 100%;
+      max-width: 900px;
+      box-shadow: var(--shadow);
+      position: relative;
+    }
+
+    .theme-toggle {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 5px 10px;
+      cursor: pointer;
+      font-size: 15px;
+      color: var(--text-muted);
+      transition: background 0.15s, border-color 0.15s;
+      line-height: 1;
+    }
+    .theme-toggle:hover { background: var(--input-bg); border-color: var(--accent); }
+
+    .admin-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .admin-header h1 {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .back-link {
+      font-size: 13px;
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 500;
+    }
+    .back-link:hover { text-decoration: underline; }
+
+    .header-actions {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .btn {
+      padding: 9px 18px;
+      border: none;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background 0.15s;
+    }
+    .btn-primary { background: var(--accent); color: white; }
+    .btn-primary:hover { background: var(--accent-hover); }
+    .btn-danger { background: var(--danger); color: white; }
+    .btn-danger:hover { background: var(--danger-hover); }
+    .btn-secondary {
+      background: transparent;
+      color: var(--text-muted);
+      border: 1px solid var(--border);
+    }
+    .btn-secondary:hover { background: var(--input-bg); border-color: var(--accent); color: var(--text); }
+    .btn-sm { padding: 5px 12px; font-size: 12px; }
+    .btn-icon {
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: 6px;
+      font-size: 15px;
+      transition: background 0.15s;
+      color: var(--text-muted);
+    }
+    .btn-icon:hover { background: var(--input-bg); }
+    .btn-icon.danger:hover { color: var(--danger); }
+
+    /* Success / Error messages */
+    .msg-banner {
+      padding: 10px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 500;
+      margin-bottom: 16px;
+      display: none;
+    }
+    .msg-banner.success { display: block; background: rgba(22,163,74,0.1); color: var(--success); border: 1px solid rgba(22,163,74,0.2); }
+    .msg-banner.error { display: block; background: rgba(220,38,38,0.07); color: var(--danger); border: 1px solid rgba(220,38,38,0.2); }
+
+    /* Form styles */
+    .create-form {
+      display: none;
+      background: var(--input-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 24px;
+    }
+    .create-form.visible { display: block; }
+    .create-form h3 {
+      font-size: 15px;
+      font-weight: 600;
+      margin-bottom: 16px;
+      color: var(--text);
+    }
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    .form-group {
+      margin-bottom: 12px;
+      text-align: left;
+    }
+    .form-group label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 6px;
+    }
+    .form-group input,
+    .form-group select {
+      width: 100%;
+      padding: 10px 12px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 13px;
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .form-group input:focus,
+    .form-group select:focus { border-color: var(--accent); }
+    .form-group input::placeholder { color: var(--placeholder); }
+    .form-group .field-error {
+      color: var(--danger);
+      font-size: 11px;
+      margin-top: 4px;
+      min-height: 0;
+    }
+    .form-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 16px;
+    }
+
+    /* Table */
+    .table-wrapper {
+      overflow-x: auto;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    thead th {
+      background: var(--input-bg);
+      font-weight: 600;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-muted);
+      padding: 10px 14px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+    tbody td {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      color: var(--text);
+      vertical-align: middle;
+    }
+    tbody tr:last-child td { border-bottom: none; }
+    tbody tr:hover { background: var(--bg-hover); }
+
+    .role-badge {
+      display: inline-block;
+      padding: 2px 10px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+    .role-badge.admin { background: rgba(99,102,241,0.1); color: #6366f1; }
+    .role-badge.user { background: rgba(107,114,128,0.1); color: var(--text-muted); }
+    [data-theme="dark"] .role-badge.admin { background: rgba(99,102,241,0.2); color: #a5b4fc; }
+    [data-theme="dark"] .role-badge.user { background: rgba(107,114,128,0.2); color: #94a3b8; }
+
+    .pw-type-badge {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 40px 20px;
+      color: var(--text-muted);
+      font-size: 14px;
+    }
+
+    .actions-cell {
+      display: flex;
+      gap: 4px;
+      align-items: center;
+    }
+
+    /* Inline edit row */
+    .edit-input {
+      padding: 6px 10px;
+      background: var(--card);
+      border: 1px solid var(--accent);
+      border-radius: 6px;
+      color: var(--text);
+      font-size: 13px;
+      font-family: inherit;
+      outline: none;
+      width: 100%;
+      min-width: 80px;
+    }
+    .edit-select {
+      padding: 6px 10px;
+      background: var(--card);
+      border: 1px solid var(--accent);
+      border-radius: 6px;
+      color: var(--text);
+      font-size: 13px;
+      font-family: inherit;
+      outline: none;
+    }
+
+    /* Reset password inline form */
+    .reset-pw-form {
+      display: none;
+      background: var(--input-bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+      margin-top: 8px;
+    }
+    .reset-pw-form.visible { display: block; }
+    .reset-pw-form h4 {
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 12px;
+      color: var(--text);
+    }
+
+    /* Access denied */
+    .access-denied {
+      text-align: center;
+      padding: 60px 20px;
+    }
+    .access-denied h2 {
+      font-size: 20px;
+      color: var(--danger);
+      margin-bottom: 8px;
+    }
+    .access-denied p {
+      color: var(--text-muted);
+      font-size: 14px;
+    }
+
+    .password-hint {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    @media (max-width: 640px) {
+      body { padding: 16px 10px; }
+      .admin-card { padding: 20px 16px; }
+      .form-row { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="admin-card">
+    <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Toggle dark/light mode">🌙</button>
+
+    <div id="mainContent" style="display:none">
+      <div class="admin-header">
+        <div>
+          <h1>User Management</h1>
+          <a href="/" class="back-link">← Back to Chat</a>
+        </div>
+        <div class="header-actions">
+          <button class="btn btn-primary" onclick="toggleCreateForm()">+ Create User</button>
+        </div>
+      </div>
+
+      <div class="msg-banner" id="msgBanner"></div>
+
+      <!-- Create User Form -->
+      <div class="create-form" id="createForm">
+        <h3>Create New User</h3>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="cfFirstName">First Name</label>
+            <input type="text" id="cfFirstName" placeholder="First name" required>
+            <div class="field-error" id="cfFirstNameError"></div>
+          </div>
+          <div class="form-group">
+            <label for="cfLastName">Last Name</label>
+            <input type="text" id="cfLastName" placeholder="Last name" required>
+            <div class="field-error" id="cfLastNameError"></div>
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="cfEmail">Email</label>
+          <input type="email" id="cfEmail" placeholder="user@capillarytech.com" required>
+          <div class="field-error" id="cfEmailError"></div>
+        </div>
+        <div class="form-group">
+          <label for="cfPassword">Password</label>
+          <input type="password" id="cfPassword" placeholder="Enter password" required>
+          <div class="field-error" id="cfPasswordError"></div>
+          <div class="password-hint">Min 8 characters, uppercase, lowercase, digit, special character</div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="cfRole">Role</label>
+            <select id="cfRole">
+              <option value="user">User</option>
+              <option value="admin">Admin</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="cfPasswordType">Password Type</label>
+            <select id="cfPasswordType">
+              <option value="permanent">Permanent</option>
+              <option value="one-time">One-time (must change)</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-primary" onclick="createUser()">Create User</button>
+          <button class="btn btn-secondary" onclick="toggleCreateForm()">Cancel</button>
+        </div>
+      </div>
+
+      <!-- User Table -->
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Email</th>
+              <th>Role</th>
+              <th>Password Type</th>
+              <th>Created</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="userTableBody">
+          </tbody>
+        </table>
+      </div>
+      <div class="empty-state" id="emptyState" style="display:none">No users found</div>
+
+      <!-- Reset Password Inline Form (shown below table when active) -->
+      <div class="reset-pw-form" id="resetPwForm">
+        <h4>Reset Password for <span id="resetPwEmail"></span></h4>
+        <input type="hidden" id="resetPwUserId">
+        <div class="form-group">
+          <label for="resetPwPassword">New Password</label>
+          <input type="password" id="resetPwPassword" placeholder="Enter new password">
+          <div class="field-error" id="resetPwPasswordError"></div>
+          <div class="password-hint">Min 8 characters, uppercase, lowercase, digit, special character</div>
+        </div>
+        <div class="form-group">
+          <label for="resetPwType">Password Type</label>
+          <select id="resetPwType">
+            <option value="permanent">Permanent</option>
+            <option value="one-time">One-time (must change)</option>
+          </select>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-primary btn-sm" onclick="submitResetPassword()">Reset Password</button>
+          <button class="btn btn-secondary btn-sm" onclick="closeResetPwForm()">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Access Denied -->
+    <div class="access-denied" id="accessDenied" style="display:none">
+      <h2>Access Denied</h2>
+      <p>You do not have permission to view this page.</p>
+    </div>
+  </div>
+
+<script>
+// ─── Theme toggle ────────────────────────────────────────────────────────────
+function toggleTheme() {
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  if (isDark) {
+    document.documentElement.removeAttribute('data-theme');
+    localStorage.setItem('theme', 'light');
+    document.getElementById('themeToggle').textContent = '🌙';
+  } else {
+    document.documentElement.setAttribute('data-theme', 'dark');
+    localStorage.setItem('theme', 'dark');
+    document.getElementById('themeToggle').textContent = '☀️';
+  }
+}
+(function() {
+  if (localStorage.getItem('theme') === 'dark') document.getElementById('themeToggle').textContent = '☀️';
+})();
+
+// ─── State ───────────────────────────────────────────────────────────────────
+let users = [];
+let editingUserId = null;
+
+// ─── Auth check ──────────────────────────────────────────────────────────────
+(async () => {
+  try {
+    const res = await fetch('/api/auth/me');
+    if (!res.ok) { window.location.href = '/login.html'; return; }
+    const data = await res.json();
+    if (data.role !== 'admin') {
+      document.getElementById('accessDenied').style.display = 'block';
+      setTimeout(() => { window.location.href = '/'; }, 2000);
+      return;
+    }
+    document.getElementById('mainContent').style.display = 'block';
+    loadUsers();
+  } catch {
+    window.location.href = '/login.html';
+  }
+})();
+
+// ─── API helper ──────────────────────────────────────────────────────────────
+async function api(method, path, body) {
+  const opts = { method, headers: {} };
+  if (body) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
+  const res = await fetch(`/api${path}`, opts);
+  if (res.status === 401) { window.location.href = '/login.html'; return null; }
+  return res;
+}
+
+// ─── Banner messages ─────────────────────────────────────────────────────────
+function showBanner(type, text) {
+  const el = document.getElementById('msgBanner');
+  el.className = 'msg-banner ' + type;
+  el.textContent = text;
+  el.style.display = 'block';
+  if (type === 'success') setTimeout(() => { el.style.display = 'none'; }, 4000);
+}
+function hideBanner() {
+  document.getElementById('msgBanner').style.display = 'none';
+}
+
+// ─── Load users ──────────────────────────────────────────────────────────────
+async function loadUsers() {
+  const res = await api('GET', '/users');
+  if (!res) return;
+  users = await res.json();
+  renderTable();
+}
+
+// ─── Render table ────────────────────────────────────────────────────────────
+function renderTable() {
+  const tbody = document.getElementById('userTableBody');
+  const empty = document.getElementById('emptyState');
+
+  if (!users.length) {
+    tbody.innerHTML = '';
+    empty.style.display = 'block';
+    return;
+  }
+  empty.style.display = 'none';
+
+  tbody.innerHTML = users.map(u => {
+    if (editingUserId === u.id) return renderEditRow(u);
+    return renderViewRow(u);
+  }).join('');
+}
+
+function renderViewRow(u) {
+  const name = escapeHtml((u.firstName || '') + ' ' + (u.lastName || '')).trim() || '—';
+  const created = u.createdAt ? new Date(u.createdAt).toLocaleDateString() : '—';
+  const roleCls = u.role === 'admin' ? 'admin' : 'user';
+  return `<tr>
+    <td>${name}</td>
+    <td>${escapeHtml(u.email)}</td>
+    <td><span class="role-badge ${roleCls}">${escapeHtml(u.role)}</span></td>
+    <td><span class="pw-type-badge">${escapeHtml(u.passwordType || '—')}</span></td>
+    <td>${created}</td>
+    <td>
+      <div class="actions-cell">
+        <button class="btn-icon" onclick="startEdit('${u.id}')" title="Edit">✏️</button>
+        <button class="btn-icon" onclick="showResetPwForm('${u.id}')" title="Reset Password">🔑</button>
+        <button class="btn-icon danger" onclick="deleteUser('${u.id}')" title="Delete">🗑️</button>
+      </div>
+    </td>
+  </tr>`;
+}
+
+function renderEditRow(u) {
+  return `<tr>
+    <td>
+      <div style="display:flex;gap:6px">
+        <input class="edit-input" id="editFirstName" value="${escapeHtml(u.firstName || '')}" placeholder="First" style="width:48%">
+        <input class="edit-input" id="editLastName" value="${escapeHtml(u.lastName || '')}" placeholder="Last" style="width:48%">
+      </div>
+    </td>
+    <td>${escapeHtml(u.email)}</td>
+    <td>
+      <select class="edit-select" id="editRole">
+        <option value="user" ${u.role === 'user' ? 'selected' : ''}>user</option>
+        <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>admin</option>
+      </select>
+    </td>
+    <td><span class="pw-type-badge">${escapeHtml(u.passwordType || '—')}</span></td>
+    <td>${u.createdAt ? new Date(u.createdAt).toLocaleDateString() : '—'}</td>
+    <td>
+      <div class="actions-cell">
+        <button class="btn btn-primary btn-sm" onclick="saveEdit('${u.id}')">Save</button>
+        <button class="btn btn-secondary btn-sm" onclick="cancelEdit()">Cancel</button>
+      </div>
+    </td>
+  </tr>`;
+}
+
+// ─── Create user ─────────────────────────────────────────────────────────────
+function toggleCreateForm() {
+  const form = document.getElementById('createForm');
+  form.classList.toggle('visible');
+  if (!form.classList.contains('visible')) clearCreateForm();
+}
+
+function clearCreateForm() {
+  ['cfFirstName','cfLastName','cfEmail','cfPassword'].forEach(id => {
+    document.getElementById(id).value = '';
+    const errEl = document.getElementById(id + 'Error');
+    if (errEl) errEl.textContent = '';
+  });
+  document.getElementById('cfRole').value = 'user';
+  document.getElementById('cfPasswordType').value = 'permanent';
+}
+
+async function createUser() {
+  // Clear errors
+  ['cfFirstName','cfLastName','cfEmail','cfPassword'].forEach(id => {
+    const errEl = document.getElementById(id + 'Error');
+    if (errEl) errEl.textContent = '';
+  });
+
+  const firstName = document.getElementById('cfFirstName').value.trim();
+  const lastName = document.getElementById('cfLastName').value.trim();
+  const email = document.getElementById('cfEmail').value.trim();
+  const password = document.getElementById('cfPassword').value;
+  const role = document.getElementById('cfRole').value;
+  const passwordType = document.getElementById('cfPasswordType').value;
+
+  let valid = true;
+  if (!firstName) { document.getElementById('cfFirstNameError').textContent = 'Required'; valid = false; }
+  if (!lastName) { document.getElementById('cfLastNameError').textContent = 'Required'; valid = false; }
+  if (!email) { document.getElementById('cfEmailError').textContent = 'Required'; valid = false; }
+  if (!password) { document.getElementById('cfPasswordError').textContent = 'Required'; valid = false; }
+  if (!valid) return;
+
+  const res = await api('POST', '/users', { firstName, lastName, email, password, role, passwordType });
+  if (!res) return;
+
+  if (res.ok) {
+    showBanner('success', 'User created successfully');
+    toggleCreateForm();
+    loadUsers();
+  } else {
+    const data = await res.json().catch(() => ({}));
+    showBanner('error', data.error || 'Failed to create user');
+  }
+}
+
+// ─── Edit user ───────────────────────────────────────────────────────────────
+function startEdit(id) {
+  editingUserId = id;
+  renderTable();
+}
+
+function cancelEdit() {
+  editingUserId = null;
+  renderTable();
+}
+
+async function saveEdit(id) {
+  const firstName = document.getElementById('editFirstName').value.trim();
+  const lastName = document.getElementById('editLastName').value.trim();
+  const role = document.getElementById('editRole').value;
+
+  const res = await api('PUT', `/users/${id}`, { firstName, lastName, role });
+  if (!res) return;
+
+  if (res.ok) {
+    editingUserId = null;
+    showBanner('success', 'User updated successfully');
+    loadUsers();
+  } else {
+    const data = await res.json().catch(() => ({}));
+    showBanner('error', data.error || 'Failed to update user');
+  }
+}
+
+// ─── Delete user ─────────────────────────────────────────────────────────────
+async function deleteUser(id) {
+  const user = users.find(u => u.id === id);
+  if (!confirm(`Delete user ${user?.email || id}? This cannot be undone.`)) return;
+
+  const res = await api('DELETE', `/users/${id}`);
+  if (!res) return;
+
+  if (res.ok) {
+    showBanner('success', 'User deleted');
+    loadUsers();
+  } else {
+    const data = await res.json().catch(() => ({}));
+    showBanner('error', data.error || 'Failed to delete user');
+  }
+}
+
+// ─── Reset password ──────────────────────────────────────────────────────────
+function showResetPwForm(id) {
+  const user = users.find(u => u.id === id);
+  if (!user) return;
+  document.getElementById('resetPwUserId').value = id;
+  document.getElementById('resetPwEmail').textContent = user.email;
+  document.getElementById('resetPwPassword').value = '';
+  document.getElementById('resetPwPasswordError').textContent = '';
+  document.getElementById('resetPwType').value = 'permanent';
+  document.getElementById('resetPwForm').classList.add('visible');
+}
+
+function closeResetPwForm() {
+  document.getElementById('resetPwForm').classList.remove('visible');
+}
+
+async function submitResetPassword() {
+  const id = document.getElementById('resetPwUserId').value;
+  const password = document.getElementById('resetPwPassword').value;
+  const passwordType = document.getElementById('resetPwType').value;
+
+  document.getElementById('resetPwPasswordError').textContent = '';
+  if (!password) {
+    document.getElementById('resetPwPasswordError').textContent = 'Password is required';
+    return;
+  }
+
+  const res = await api('POST', `/users/${id}/reset-password`, { password, passwordType });
+  if (!res) return;
+
+  if (res.ok) {
+    showBanner('success', 'Password reset successfully');
+    closeResetPwForm();
+    loadUsers();
+  } else {
+    const data = await res.json().catch(() => ({}));
+    document.getElementById('resetPwPasswordError').textContent = data.error || 'Failed to reset password';
+  }
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str || '';
+  return div.innerHTML;
+}
+</script>
+</body>
+</html>
