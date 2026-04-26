@@ -453,7 +453,7 @@
     <div style="padding:10px 14px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:4px">
       <span id="userEmail" style="font-size:11px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
       <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
-        <a href="#" onclick="openChangePwModal(); return false;" style="font-size:12px;color:var(--text-muted);text-decoration:none">Change Password</a>
+        <a href="#" onclick="openChangePwModal(); return false;" id="changePwLink" style="font-size:12px;color:var(--text-muted);text-decoration:none">Change Password</a>
         <a href="/admin.html" id="adminLink" style="font-size:12px;color:var(--accent);text-decoration:none;display:none">Admin</a>
         <a href="/api/auth/logout" style="font-size:12px;color:var(--text-muted);text-decoration:none">Sign out</a>
       </div>
@@ -564,12 +564,16 @@ loadConversations();
   try {
     const r = await fetch('/api/auth/me');
     if (!r.ok) { window.location.href = '/login.html'; return; }
-    const { email, role } = await r.json();
+    const { email, role, isSso } = await r.json();
     const el = document.getElementById('userEmail');
     if (el) el.textContent = email;
     if (role === 'admin') {
       const adminLink = document.getElementById('adminLink');
       if (adminLink) adminLink.style.display = 'inline';
+    }
+    if (isSso) {
+      const changePwLink = document.getElementById('changePwLink');
+      if (changePwLink) changePwLink.style.display = 'none';
     }
   } catch { /* ignore network errors */ }
 })();

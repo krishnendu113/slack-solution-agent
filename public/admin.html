@@ -570,7 +570,7 @@ function renderViewRow(u) {
     <td>
       <div class="actions-cell">
         <button class="btn-icon" onclick="startEdit('${u.id}')" title="Edit">✏️</button>
-        <button class="btn-icon" onclick="showResetPwForm('${u.id}')" title="Reset Password">🔑</button>
+        ${u.createdBy !== 'sso' ? `<button class="btn-icon" onclick="showResetPwForm('${u.id}')" title="Reset Password">🔑</button>` : `<span class="pw-type-badge" title="SSO user — password managed externally">🌐</span>`}
         <button class="btn-icon danger" onclick="deleteUser('${u.id}')" title="Delete">🗑️</button>
       </div>
     </td>

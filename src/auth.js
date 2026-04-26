@@ -200,7 +200,7 @@ router.get('/api/auth/logout', (req, res) => {
 
 router.get('/api/auth/me', (req, res) => {
   if (!req.session?.userId) return res.status(401).json({ error: 'Not authenticated' });
-  res.json({ email: req.session.email, role: req.session.role });
+  res.json({ email: req.session.email, role: req.session.role, isSso: !!req.session.isSso });
 });
 
 router.get('/api/auth/providers', (_req, res) => {
@@ -396,6 +396,11 @@ router.post('/api/users/:id/reset-password', async (req, res) => {
     const user = await store.findUserById(req.params.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
 
+    // Block password reset for SSO-only users (passwordHash is null)
+    if (user.passwordHash === null) {
+      return res.status(400).json({ error: 'Cannot reset password for SSO-only users. This user authenticates via Google/Microsoft.' });
+    }
+
     const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
     const mustChangePassword = passwordType === 'one-time';
     const lockoutReset = resetLockout();
@@ -442,6 +447,11 @@ router.post('/api/auth/change-password', async (req, res) => {
     const user = await store.findUserById(req.session.userId);
     if (!user) return res.status(404).json({ error: 'User not found' });
 
+    // Block password change for SSO-only users
+    if (user.passwordHash === null) {
+      return res.status(400).json({ error: 'SSO users cannot change passwords. Your account is managed by Google/Microsoft.' });
+    }
+
     // Verify current password
     const match = await bcrypt.compare(currentPassword, user.passwordHash);
     if (!match) return res.status(401).json({ error: 'Current password is incorrect' });
@@ -479,6 +489,7 @@ router.get('/auth/google/callback',
     req.session.userId = req.user.id;
     req.session.email = req.user.email;
     req.session.role = req.user.role;
+    req.session.isSso = true;
     res.redirect('/');
   },
   (err, req, res, _next) => {
@@ -496,6 +507,7 @@ router.get('/auth/microsoft/callback',
     req.session.userId = req.user.id;
     req.session.email = req.user.email;
     req.session.role = req.user.role;
+    req.session.isSso = true;
     res.redirect('/');
   },
   (err, req, res, _next) => {
