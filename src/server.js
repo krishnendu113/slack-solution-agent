@@ -22,6 +22,8 @@ if (!SESSION_SECRET) {
 
 if (process.env.NODE_ENV === 'production') {
   console.warn('[server] Warning: using MemoryStore for sessions — not suitable for multi-process deployments');
+  // Trust Railway's reverse proxy so secure cookies work behind HTTPS
+  app.set('trust proxy', 1);
 }
 
 app.use(express.json());
@@ -33,7 +35,7 @@ app.use(session({
   saveUninitialized: false,
   cookie: {
     httpOnly: true,
-    sameSite: 'strict',
+    sameSite: 'lax',  // 'lax' allows cookie to be set on OAuth redirects back from Google/Microsoft
     maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     secure: process.env.NODE_ENV === 'production',
   },

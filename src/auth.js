@@ -90,6 +90,19 @@ function makeSsoCallback(provider) {
     try {
       const store = getUserStore();
       const user = await store.upsertSsoUser(email);
+
+      // Update first/last name from profile if not already set
+      const firstName = profile.name?.givenName || profile.displayName?.split(' ')[0] || '';
+      const lastName = profile.name?.familyName || profile.displayName?.split(' ').slice(1).join(' ') || '';
+      if ((!user.firstName || !user.lastName) && (firstName || lastName)) {
+        await store.updateUser(user.id, {
+          firstName: user.firstName || firstName,
+          lastName: user.lastName || lastName,
+        });
+        user.firstName = user.firstName || firstName;
+        user.lastName = user.lastName || lastName;
+      }
+
       done(null, user);
     } catch (err) {
       done(err);
