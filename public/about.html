@@ -60,6 +60,7 @@
     .badge.blue { color: var(--blue); background: var(--blue-bg); border-color: var(--blue-border); }
     .badge.purple { color: var(--purple); background: var(--purple-bg); border-color: var(--purple-border); }
     .badge.amber { color: var(--amber); background: var(--amber-bg); border-color: var(--amber-border); }
+    .badge.teal { color: var(--teal); background: var(--teal-bg); border-color: var(--teal-border); }
     h2 { font-size: 22px; font-weight: 700; margin-bottom: 6px; }
     h2 + .section-desc { font-size: 14px; color: var(--text-muted); margin-bottom: 20px; }
     h3 { font-size: 15px; font-weight: 600; margin-bottom: 8px; }
@@ -142,6 +143,7 @@
       <span class="badge blue">Anthropic Claude</span>
       <span class="badge purple">Multi-user Auth</span>
       <span class="badge amber">LangGraph Orchestration</span>
+      <span class="badge teal">MongoDB Atlas</span>
     </div>
   </section>
 
@@ -163,30 +165,62 @@
     <p class="section-desc">The agent follows a step-by-step workflow powered by <strong>LangGraph</strong> — a framework that breaks complex AI tasks into manageable steps, like an assembly line where each station does one job well.</p>
 
     <div class="diagram">
-      <!-- Main pipeline -->
+      <!-- Entry -->
       <div class="diagram-row">
-        <div class="d-node blue">classify<small>Understand the request</small></div>
+        <div class="d-node" style="background:var(--bg-secondary);border-color:var(--connector)">__start__</div>
         <span class="d-arrow">→</span>
-        <div class="d-node teal">loadSkills<small>Pick relevant expertise</small></div>
-        <span class="d-arrow">→</span>
-        <div class="d-node amber">skillRouter<small>Choose the right path</small></div>
+        <div class="d-node blue">preflight<small>Gate + Intent + Client detection</small></div>
       </div>
-      <!-- Branch -->
-      <div style="display:flex;gap:24px;margin-left:40px;margin-top:4px">
+      
+      <!-- Gate decision -->
+      <div style="display:flex;gap:24px;margin-left:40px;margin-top:8px">
         <div class="d-branch">
           <div class="diagram-row">
-            <span class="d-label">Standard assessment</span>
-            <div class="d-node blue">research<small>Search & reason (loop)</small></div>
-            <span class="d-arrow">→</span>
-            <div class="d-node green">validate<small>Check quality</small></div>
+            <span class="d-label">off-topic (≥85% confidence)</span>
+            <div class="d-node" style="border-color:var(--red);color:var(--red);background:rgba(220,38,38,0.05)">🚫 Refusal → END<small>No Sonnet tokens used</small></div>
           </div>
           <div class="diagram-row">
+            <span class="d-label">on-topic</span>
+            <div class="d-node teal">loadSkills<small>Skill catalogue + prompts</small></div>
+            <span class="d-arrow">→</span>
+            <div class="d-node amber">skillRouter<small>Choose execution path</small></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Two paths from skillRouter -->
+      <div style="display:flex;gap:24px;margin-left:80px;margin-top:8px">
+        <div class="d-branch">
+          <!-- Standard path with loop -->
+          <div class="diagram-row">
+            <span class="d-label">Standard assessment</span>
+          </div>
+          <div class="diagram-row" style="margin-left:12px">
+            <div class="d-node blue">research<small>Search & reason</small></div>
+            <span class="d-arrow">⇄</span>
+            <div class="d-node" style="border-color:var(--amber-border);background:var(--amber-bg);color:var(--amber)">compactIfNeeded<small>Token check & summarise</small></div>
+            <span class="d-arrow" style="font-size:12px;color:var(--text-muted)">loop on tool_use</span>
+          </div>
+          <div class="diagram-row" style="margin-left:12px;margin-top:4px">
+            <span class="d-arrow" style="margin-left:0">↓</span>
+            <span style="font-size:11px;color:var(--text-muted);margin-right:8px">end_turn</span>
+            <div class="d-node green">validate<small>Quality check</small></div>
+            <span class="d-arrow">→</span>
+            <div class="d-node" style="background:var(--bg-secondary);border-color:var(--connector)">END</div>
+          </div>
+
+          <!-- Document path -->
+          <div class="diagram-row" style="margin-top:16px">
             <span class="d-label">Document generation</span>
+          </div>
+          <div class="diagram-row" style="margin-left:12px">
             <div class="d-node purple">researchFanOut<small>Parallel search</small></div>
             <span class="d-arrow">→</span>
-            <div class="d-node purple">sectionWriter<small>Write each section</small></div>
+            <div class="d-node purple">sectionWriter<small>Write sections</small></div>
             <span class="d-arrow">→</span>
             <div class="d-node green">skillValidate<small>Verify structure</small></div>
+            <span class="d-arrow">→</span>
+            <div class="d-node" style="background:var(--bg-secondary);border-color:var(--connector)">END</div>
           </div>
         </div>
       </div>
@@ -195,11 +229,11 @@
     <div class="card-grid cols-2" style="margin-top:20px">
       <div class="card">
         <h3>🔵 Standard path</h3>
-        <p>For everyday feasibility questions. The agent searches multiple sources, reasons across the results, and writes a structured verdict — all in one flowing conversation, like chatting with an expert.</p>
+        <p>The research node calls tools (Jira, Confluence, Kapa, web search), gets results, and loops back through compactIfNeeded which checks if the context window is getting too large and summarises older messages if needed. When the model is done researching, it synthesises the final answer and validate checks quality.</p>
       </div>
       <div class="card">
         <h3>🟣 Document path</h3>
-        <p>For SDDs and gap analyses. Searches all sources <em>simultaneously</em> (not one by one), then writes each section in parallel using the right AI model for each — fast models for simple sections, powerful models for complex reasoning.</p>
+        <p>For SDDs and gap analyses. researchFanOut searches all sources simultaneously, sectionWriter writes each section in parallel using the right model (Haiku for simple, Sonnet for complex), and skillValidate checks the output against the skill's validation rules.</p>
       </div>
     </div>
   </section>
@@ -254,10 +288,11 @@
     <p class="section-desc">Under the hood, several optimizations keep the agent fast and cost-efficient.</p>
     <div class="opt-list">
       <div class="opt-item"><span class="opt-icon">⚡</span><div><strong>Parallel pre-flight</strong> <span>— Request classification and skill detection run simultaneously before the main loop starts, saving 300–500ms on every request.</span></div></div>
-      <div class="opt-item"><span class="opt-icon">🗜️</span><div><strong>Parallel summarisation</strong> <span>— When multiple tools return results, all summaries are generated at once (not one by one), cutting research time significantly.</span></div></div>
-      <div class="opt-item"><span class="opt-icon">🔇</span><div><strong>Smart token buffering</strong> <span>— Text streams to you in real-time, but intermediate "thinking" text from tool-calling turns isn't duplicated in the final response.</span></div></div>
       <div class="opt-item"><span class="opt-icon">🎯</span><div><strong>Conditional skill loading</strong> <span>— Only relevant skills and reference files are loaded based on what you're asking about, keeping the AI's context focused.</span></div></div>
       <div class="opt-item"><span class="opt-icon">💰</span><div><strong>Model dispatch policy</strong> <span>— Every operation is routed to the cheapest model that can handle it. The expensive model is used only for complex reasoning.</span></div></div>
+      <div class="opt-item"><span class="opt-icon">🗜️</span><div><strong>Context compaction</strong> <span>— When conversations get long, older messages are automatically summarised by Haiku to keep the context window lean. The full history is always preserved in the database.</span></div></div>
+      <div class="opt-item"><span class="opt-icon">🚪</span><div><strong>Off-topic gate</strong> <span>— A fast Haiku classifier intercepts irrelevant requests before they reach the main loop, saving Sonnet tokens and keeping the agent focused.</span></div></div>
+      <div class="opt-item"><span class="opt-icon">🔧</span><div><strong>Intent-based tool loading</strong> <span>— Only tools relevant to the user's question are included in each API call, reducing noise and token overhead.</span></div></div>
     </div>
   </section>
 
@@ -269,13 +304,47 @@
   </section>
 
   <section>
+    <h2>Database & persistence</h2>
+    <p class="section-desc">All data is stored in <strong>MongoDB Atlas</strong> — a cloud-hosted database that provides reliability, scalability, and zero-downtime deployments.</p>
+    <div class="card-grid cols-2">
+      <div class="card"><h3>💬 Conversations</h3><p>Every message is persisted atomically. Conversations survive server restarts and are scoped per user — no one can see another user's chats.</p></div>
+      <div class="card"><h3>👤 User accounts</h3><p>Full user lifecycle: admin-created accounts with one-time or permanent passwords, SSO via Google/Microsoft, password policies, and account lockout after failed attempts.</p></div>
+      <div class="card"><h3>🏢 Client personas</h3><p>Client-specific context (modules, known issues, recent interactions) stored in the database and automatically injected when the agent detects a known client.</p></div>
+      <div class="card"><h3>📋 Audit trail</h3><p>Every security event — logins, password changes, user creation, account lockouts — is logged with timestamps and actor identification.</p></div>
+    </div>
+    <p style="margin-top:16px">The system uses a <strong>store adapter pattern</strong> — all code talks to a generic interface, and the backend (MongoDB or JSON files) is swapped via a single environment variable. This made the migration from flat files to MongoDB a zero-change operation for all application code.</p>
+  </section>
+
+  <section>
+    <h2>User management</h2>
+    <p class="section-desc">Admins have full control over user accounts through a dedicated management interface.</p>
+    <div class="opt-list">
+      <div class="opt-item"><span class="opt-icon">👥</span><div><strong>Admin panel</strong> <span>— Create, edit, and delete user accounts. Assign roles (admin/user) and set password types (one-time or permanent).</span></div></div>
+      <div class="opt-item"><span class="opt-icon">🔑</span><div><strong>Password policies</strong> <span>— Minimum 8 characters with uppercase, lowercase, digit, and special character requirements. Enforced on creation, change, and reset.</span></div></div>
+      <div class="opt-item"><span class="opt-icon">🔒</span><div><strong>Account lockout</strong> <span>— After 5 consecutive failed login attempts, the account is locked for 15 minutes. Admins can reset lockouts manually.</span></div></div>
+      <div class="opt-item"><span class="opt-icon">🔄</span><div><strong>Forced password change</strong> <span>— Users created with one-time passwords must change their password on first login before accessing the application.</span></div></div>
+      <div class="opt-item"><span class="opt-icon">🌐</span><div><strong>SSO integration</strong> <span>— Google and Microsoft OAuth with domain restriction. SSO users are auto-provisioned on first login.</span></div></div>
+    </div>
+  </section>
+
+  <section>
     <h2>What's next</h2>
+    <p class="section-desc">Completed milestones and upcoming improvements.</p>
+    
+    <h3 style="margin-bottom:12px;color:var(--success)">✅ Completed</h3>
+    <div class="roadmap-list" style="margin-bottom:24px">
+      <div class="roadmap-item" style="border-color:var(--green-border);background:var(--green-bg)"><div class="roadmap-num" style="background:var(--green-bg);color:var(--green)">✓</div><div><h3>Database persistence</h3><p>Conversations, users, personas, and audit logs stored in MongoDB Atlas with automatic migration from JSON files.</p></div></div>
+      <div class="roadmap-item" style="border-color:var(--green-border);background:var(--green-bg)"><div class="roadmap-num" style="background:var(--green-bg);color:var(--green)">✓</div><div><h3>Context compaction</h3><p>Long conversations are automatically summarised to keep the agent fast without losing important context.</p></div></div>
+      <div class="roadmap-item" style="border-color:var(--green-border);background:var(--green-bg)"><div class="roadmap-num" style="background:var(--green-bg);color:var(--green)">✓</div><div><h3>Smart tool & skill loading</h3><p>Intent-based classification loads only relevant tools and skills per request, reducing token usage and improving accuracy.</p></div></div>
+      <div class="roadmap-item" style="border-color:var(--green-border);background:var(--green-bg)"><div class="roadmap-num" style="background:var(--green-bg);color:var(--green)">✓</div><div><h3>Off-topic filtering & user management</h3><p>Gate blocks irrelevant requests before they reach the main loop. Full admin panel with password policies, lockout, and audit logging.</p></div></div>
+    </div>
+
+    <h3 style="margin-bottom:12px;color:var(--accent)">🔮 Upcoming</h3>
     <div class="roadmap-list">
-      <div class="roadmap-item"><div class="roadmap-num">1</div><div><h3>Database persistence</h3><p>Move conversations, users, and client data from JSON files to a proper database for reliability at scale.</p></div></div>
-      <div class="roadmap-item"><div class="roadmap-num">2</div><div><h3>Context compaction</h3><p>Automatically summarise older messages in long conversations so the agent stays fast without losing important context.</p></div></div>
-      <div class="roadmap-item"><div class="roadmap-num">3</div><div><h3>Smart tool loading</h3><p>Only include relevant tools in each request based on what you're asking about — reducing noise and improving accuracy.</p></div></div>
-      <div class="roadmap-item"><div class="roadmap-num">4</div><div><h3>Off-topic filtering</h3><p>Detect and politely decline requests outside the agent's domain before spending resources on research.</p></div></div>
-      <div class="roadmap-item"><div class="roadmap-num">5</div><div><h3>Model-agnostic architecture</h3><p>The workflow engine (LangGraph) and tool system are already model-independent. A future update will abstract the AI model layer so the agent can work with OpenAI, Google Gemini, or open-source models — not just Anthropic Claude.</p></div></div>
+      <div class="roadmap-item"><div class="roadmap-num">1</div><div><h3>Conversation history search</h3><p>Search across past conversations to find relevant precedents and reuse previous research — already built in the API, UI coming soon.</p></div></div>
+      <div class="roadmap-item"><div class="roadmap-num">2</div><div><h3>Agent planning tools</h3><p>Structured step-by-step plans for complex requests, visible in real-time via the chat UI — API ready, UI integration pending.</p></div></div>
+      <div class="roadmap-item"><div class="roadmap-num">3</div><div><h3>Model-agnostic architecture</h3><p>Abstract the AI model layer so the agent can work with OpenAI, Google Gemini, or open-source models — not just Anthropic Claude.</p></div></div>
+      <div class="roadmap-item"><div class="roadmap-num">4</div><div><h3>Analytics dashboard</h3><p>Usage metrics, cost tracking per user/skill, response quality monitoring, and audit log viewer for admins.</p></div></div>
     </div>
   </section>
 
@@ -284,8 +353,11 @@
     <ul class="feature-list">
       <li>Auto-deploys from GitHub to Railway on every push to <code>main</code></li>
       <li>Node.js 20+, all configuration via environment variables — no hardcoded secrets</li>
-      <li>Multi-user authentication with email/password and Google/Microsoft SSO</li>
+      <li>MongoDB Atlas for persistent storage — conversations, users, personas, and audit logs</li>
+      <li>Multi-user authentication with email/password, Google SSO, and Microsoft SSO</li>
+      <li>Admin user management with password policies, account lockout, and forced password change</li>
       <li>Client persona detection — the agent automatically adapts its context when it recognises a known client</li>
+      <li>LangSmith observability — optional full request tracing for debugging and cost monitoring</li>
     </ul>
   </section>
 
