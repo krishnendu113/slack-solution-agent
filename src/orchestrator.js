@@ -34,13 +34,33 @@ export class AgentError extends Error {
 function friendlyError(err) {
   const msg = err.message || '';
   const status = err.status || 0;
-  if (msg.includes('credit balance is too low')) return new AgentError("The AI's piggy bank is empty. Top up at console.anthropic.com.", msg);
-  if (msg.includes('invalid x-api-key') || status === 401) return new AgentError("API key didn't pass the bouncer. Check ANTHROPIC_API_KEY in .env.", msg);
-  if (msg.includes('overloaded') || status === 529) return new AgentError("Claude is juggling too many requests. Try again in a moment.", msg);
-  if (status === 429) return new AgentError("Rate limit hit — wait a few seconds and retry.", msg);
-  if (status >= 500) return new AgentError("Anthropic's servers are having a rough day. Try again shortly.", msg);
-  if (msg.includes('context length') || msg.includes('too long')) return new AgentError("Conversation too long for Claude. Start a new chat.", msg);
-  return new AgentError(`Something unexpected happened (${status || 'unknown'}). Check server logs.`, msg);
+  const body = err.error?.error?.message || err.error?.message || msg;
+
+  // Budget / billing errors
+  if (body.includes('credit balance is too low') || body.includes('billing') || body.includes('insufficient_quota'))
+    return new AgentError("The AI budget has been exhausted. Please contact your admin to top up credits at console.anthropic.com.", body);
+  if (body.includes('exceeded your current quota') || body.includes('spending limit'))
+    return new AgentError("The AI spending limit has been reached. Please contact your admin to increase the limit at console.anthropic.com.", body);
+
+  // Auth errors
+  if (body.includes('invalid x-api-key') || body.includes('invalid api key') || status === 401)
+    return new AgentError("The AI API key is invalid or expired. Please contact your admin.", body);
+
+  // Rate limits
+  if (status === 429) return new AgentError("The AI is receiving too many requests right now. Please wait a moment and try again.", body);
+  if (body.includes('overloaded') || status === 529) return new AgentError("The AI service is temporarily overloaded. Please try again in a moment.", body);
+
+  // Server errors
+  if (status >= 500) return new AgentError("The AI service is experiencing issues. Please try again shortly.", body);
+
+  // Context length
+  if (body.includes('context length') || body.includes('too long') || body.includes('maximum'))
+    return new AgentError("This conversation has become too long for the AI to process. Please start a new chat.", body);
+
+  // Invalid request (catch-all for 400s with useful message)
+  if (status === 400) return new AgentError(`The AI request was invalid: ${body.slice(0, 150)}`, body);
+
+  return new AgentError(`Something went wrong while processing your request. Please try again or start a new chat.`, body);
 }
 
 // ─── Base System Prompt ───────────────────────────────────────────────────────

@@ -373,8 +373,10 @@ function toggleTheme() {
 }
 (function(){ if(localStorage.getItem('theme')==='dark') document.getElementById('themeToggle').textContent='☀️'; })();
 function goBack() {
-  try { if(document.referrer && new URL(document.referrer).origin===location.origin){ history.back(); return; } } catch(e){}
-  location.href='/';
+  // If there's browser history to go back to, use it
+  if (window.history.length > 1) { history.back(); return; }
+  // Otherwise navigate to the main app
+  location.href = '/';
 }
 </script>
 </body>
