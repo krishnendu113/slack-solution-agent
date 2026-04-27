@@ -70,9 +70,9 @@ app.get('/api/documents/:downloadToken', (req, res) => {
 
 // ─── API: Conversations ──────────────────────────────────────────────────────
 
-app.get('/api/conversations', (req, res) => {
+app.get('/api/conversations', async (req, res) => {
   const convStore = getConversationStore();
-  res.json(convStore.listConversations(req.session.userId));
+  res.json(await convStore.listConversations(req.session.userId));
 });
 
 app.post('/api/conversations', async (req, res) => {
@@ -85,9 +85,9 @@ app.post('/api/conversations', async (req, res) => {
   res.status(201).json(conv);
 });
 
-app.get('/api/conversations/:id', (req, res) => {
+app.get('/api/conversations/:id', async (req, res) => {
   const convStore = getConversationStore();
-  const conv = convStore.getConversation(req.params.id, req.session.userId);
+  const conv = await convStore.getConversation(req.params.id, req.session.userId);
   if (!conv) return res.status(404).json({ error: 'Not found' });
   res.json(conv);
 });
@@ -103,7 +103,7 @@ app.delete('/api/conversations/:id', async (req, res) => {
 
 app.post('/api/conversations/:id/messages', upload.array('files', 5), async (req, res) => {
   const convStore = getConversationStore();
-  const conv = convStore.getConversation(req.params.id, req.session.userId);
+  const conv = await convStore.getConversation(req.params.id, req.session.userId);
   if (!conv) return res.status(404).json({ error: 'Conversation not found' });
 
   const content = req.body?.content || '';
