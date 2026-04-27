@@ -131,13 +131,17 @@ app.post('/api/conversations/:id/messages', upload.array('files', 5), async (req
     }
 
     const fileNames = files.map(f => f.originalname);
-    await convStore.appendMessage(conv.id, {
+    const userMsg = {
       role: 'user',
       content: problemText || `(attached ${fileNames.join(', ')})`,
       ...(fileNames.length ? { files: fileNames } : {}),
-    });
+    };
+    await convStore.appendMessage(conv.id, userMsg);
 
-    const history = conv.messages.map((m, i, arr) => {
+    // Build history from existing messages + the just-appended user message
+    // (MongoDB $push doesn't mutate the local conv object)
+    const allMessages = [...conv.messages, userMsg];
+    const history = allMessages.map((m, i, arr) => {
       if (i === arr.length - 1 && m.role === 'user' && extractedFiles.length) {
         return { role: 'user', content: buildAnthropicContent(problemText, extractedFiles) };
       }
