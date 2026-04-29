@@ -66,7 +66,7 @@ describe('Property 10: Skill loading respects intent classification', () => {
     ids.map(id => ({ id, reason: `Test reason for ${id}` })),
   );
 
-  it('loaded skills equal union of intent-identified skills + alwaysLoad skills', async () => {
+  it('loaded skills equal union of intent-identified skills + alwaysLoad skills + conditionally loaded cr-evaluator', async () => {
     await fc.assert(
       fc.asyncProperty(arbSemanticMatches, async (semanticMatches) => {
         const result = await loadSkillsForProblem(
@@ -74,10 +74,11 @@ describe('Property 10: Skill loading respects intent classification', () => {
           semanticMatches,
         );
 
-        // Expected: alwaysLoad skills + semantic matches
+        // Expected: alwaysLoad skills + semantic matches + cr-evaluator (conditionally loaded when classificationType is null)
         const expectedIds = new Set([
           ...alwaysLoadIds,
           ...semanticMatches.map(m => m.id),
+          'cr-evaluator', // conditionally loaded because classificationType defaults to null
         ]);
 
         const resultIdSet = new Set(result.skillIds);

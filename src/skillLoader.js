@@ -151,13 +151,29 @@ export function detectSkills(text) {
  * @param {string} problemText
  * @returns {Promise<{skillIds: string[], prompt: string, matched: object[]}>}
  */
-export async function loadSkillsForProblem(problemText, semanticMatches = null) {
+export async function loadSkillsForProblem(problemText, semanticMatches = null, classificationType = null) {
   const registry = getRegistry();
 
   // Always-on skills load first, unconditionally — annotate so UI can show "always-on" tag
   const alwaysOn = registry.skills
     .filter(s => s.alwaysLoad)
     .map(s => ({ ...s, matchedTriggers: [], alwaysActive: true }));
+
+  // Conditional cr-evaluator loading based on classification type:
+  // Load if classificationType is 'cr', 'brd', 'issue', or null (fallback/safe default)
+  // Omit if classificationType is 'general_query'
+  const crRelevantTypes = new Set(['cr', 'brd', 'issue']);
+  const shouldLoadCr = classificationType === null || crRelevantTypes.has(classificationType);
+
+  if (shouldLoadCr) {
+    const crSkill = registry.skills.find(s => s.id === 'cr-evaluator');
+    if (crSkill && !crSkill.alwaysLoad && !alwaysOn.some(s => s.id === 'cr-evaluator')) {
+      alwaysOn.push({ ...crSkill, matchedTriggers: [], alwaysActive: true, conditionalLoad: true });
+      console.log(`[graph:skills] cr-evaluator: loaded (classification=${classificationType})`);
+    }
+  } else {
+    console.log(`[graph:skills] cr-evaluator: omitted (classification=${classificationType})`);
+  }
 
   const alwaysOnIds = new Set(alwaysOn.map(s => s.id));
 

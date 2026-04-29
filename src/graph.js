@@ -12,6 +12,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { loadSkillsForProblem, loadSkillFiles, listSkills, getSkillCatalogue } from './skillLoader.js';
 import { getToolsByIntent } from './tools/index.js';
 import { runSubAgent } from './subAgent.js';
+import { dispatchResearch, assembleResearchContext } from './researchAgents.js';
 import { getClientContext, updateClientPersona } from './clientPersona.js';
 import { storeDocument } from './documentStore.js';
 import { runPreflight } from './preflight.js';
@@ -169,8 +170,9 @@ export function buildGraph(callbacks, baseSystemPrompt) {
 
   // ── Node: loadSkills ───────────────────────────────────────────────────────
   const loadSkillsNode = maybeTraceable('loadSkills', async (state) => {
+    const classificationType = state.classification?.type || null;
     const { skillIds, prompt: skillPrompt, matched, manifests } = await loadSkillsForProblem(
-      state.problemText, state.semanticMatches
+      state.problemText, state.semanticMatches, classificationType
     );
 
     if (skillIds.length) {
@@ -440,6 +442,208 @@ export function buildGraph(callbacks, baseSystemPrompt) {
     }
 
     return {};
+  });
+
+  // ── Node: parallelResearch ──────────────────────────────────────────────────
+  const parallelResearchNode = maybeTraceable('parallelResearch', async (state) => {
+    await onPhase?.('research');
+    await onStatus('🔍 Researching in parallel...');
+
+    try {
+      const { summaries, allFailed } = await dispatchResearch({
+        toolTags: state.toolTags,
+        problemText: state.problemText,
+        userId: state.userId,
+        onToolStatus,
+      });
+
+      if (allFailed) {
+        console.warn('[graph:research] All parallel agents failed — falling back to sequential research');
+        await onStatus('⚠️ Some research sources unavailable, falling back...');
+        return { researchSummaries: summaries, researchContext: '', fallbackToSequential: true, synthesisPath: false };
+      }
+
+      const researchContext = assembleResearchContext(summaries);
+
+      // Emit partial results status
+      const errorCount = summaries.filter(s => s.status === 'error').length;
+      if (errorCount > 0) {
+        await onStatus('⚠️ Some research sources unavailable, proceeding with available data');
+      }
+
+      await onPhase?.('synthesise');
+      await onStatus('✍️ Synthesising...');
+
+      return { researchSummaries: summaries, researchContext, fallbackToSequential: false, synthesisPath: true };
+    } catch (err) {
+      console.error('[graph:research] Dispatcher error — falling back to sequential:', err.message);
+      return { researchContext: '', fallbackToSequential: true, synthesisPath: false };
+    }
+  });
+
+  // ── Node: synthesise ──────────────────────────────────────────────────────
+  const synthesiseNode = maybeTraceable('synthesise', async (state) => {
+    const anthropic = await getClientAsync();
+    const { definitions: tools, handle } = getToolsByIntent(state.toolTags, { userId: state.userId });
+    const maxTokens = parseInt(process.env.MAX_AGENT_TOKENS || '8000', 10);
+
+    // Inject research context into messages
+    const researchMessage = state.researchContext
+      ? { role: 'user', content: `[Research Results]\n\n${state.researchContext}\n\nNow synthesise a response based on the research above and the conversation context.` }
+      : null;
+    const messages = researchMessage
+      ? [...state.messages, researchMessage]
+      : state.messages;
+
+    // Log selected tool names and intent tags
+    console.log(`[graph:tools] Intent tags=[${(state.toolTags || []).join(', ')}] Selected tools=[${tools.map(t => t.name).join(', ')}]`);
+
+    await onStatus(state.turnCount === 0 ? '✍️ Synthesising...' : '🔄 Processing tool results...');
+
+    const contentBlocks = [];
+    let currentBlock = null;
+    let stopReason = null;
+    let deltaText = '';
+    const turnTokens = [];
+
+    console.log(`[graph:synthesise] Turn ${state.turnCount + 1}, ${tools.length} tools, ${messages.length} messages`);
+
+    const stream = anthropic.messages.stream({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: maxTokens,
+      system: state.systemPrompt,
+      messages,
+      tools,
+      stream: true,
+    });
+
+    for await (const event of stream) {
+      if (event.type === 'content_block_start') {
+        currentBlock = { ...event.content_block, _text: '', _inputJson: '' };
+        if (currentBlock.type === 'tool_use' && onToolStatus) {
+          const toolId = `${currentBlock.name}-${currentBlock.id}`;
+          currentBlock._toolId = toolId;
+          await onToolStatus({ id: toolId, name: currentBlock.name, inputSummary: '', status: 'running' });
+        }
+      } else if (event.type === 'content_block_delta') {
+        if (event.delta?.type === 'text_delta' && currentBlock?.type === 'text') {
+          currentBlock._text += event.delta.text;
+          deltaText += event.delta.text;
+          turnTokens.push(event.delta.text);
+        } else if (event.delta?.type === 'input_json_delta' && currentBlock?.type === 'tool_use') {
+          currentBlock._inputJson += event.delta.partial_json;
+        }
+      } else if (event.type === 'content_block_stop') {
+        if (currentBlock?.type === 'tool_use') {
+          let input = {};
+          try { input = JSON.parse(currentBlock._inputJson || '{}'); } catch {}
+          contentBlocks.push({ type: 'tool_use', id: currentBlock.id, name: currentBlock.name, input, _toolId: currentBlock._toolId });
+          if (onToolStatus) {
+            const summary = inputSummary(currentBlock.name, input);
+            await onToolStatus({ id: currentBlock._toolId, name: currentBlock.name, inputSummary: summary, status: 'running' });
+          }
+        } else if (currentBlock?.type === 'text') {
+          contentBlocks.push({ type: 'text', text: currentBlock._text });
+        }
+        currentBlock = null;
+      } else if (event.type === 'message_delta') {
+        stopReason = event.delta?.stop_reason;
+      }
+    }
+
+    // Emit buffered tokens only for synthesis turns (not tool-use turns)
+    if (stopReason !== 'tool_use') {
+      for (const tok of turnTokens) {
+        if (onToken) await onToken(tok);
+      }
+    }
+
+    const cleanBlocks = contentBlocks
+      .filter(b => stopReason !== 'tool_use' || b.type !== 'text')
+      .map(b => b.type === 'tool_use'
+        ? { type: 'tool_use', id: b.id, name: b.name, input: b.input }
+        : b);
+
+    const newMessages = [...state.messages, { role: 'assistant', content: cleanBlocks }];
+    const fullText = stopReason !== 'tool_use'
+      ? state.fullText + deltaText
+      : state.fullText;
+
+    if (stopReason !== 'tool_use') {
+      return { messages: newMessages, fullText, stopReason, turnCount: state.turnCount + 1 };
+    }
+
+    // Execute tools
+    const rawResults = [];
+    for (const block of contentBlocks) {
+      if (block.type !== 'tool_use') continue;
+      try {
+        const result = await handle(block.name, block.input);
+        rawResults.push({ block, result, err: null });
+      } catch (err) {
+        rawResults.push({ block, result: null, err });
+      }
+    }
+
+    const summarised = await Promise.all(
+      rawResults.map(({ block, result, err }) => {
+        if (err || !result || result.length <= 500) return Promise.resolve(result);
+        return summariseToolResult(block.name, result, state.problemText);
+      })
+    );
+
+    const toolResults = [];
+    for (let i = 0; i < rawResults.length; i++) {
+      const { block, err } = rawResults[i];
+      const content = err ? JSON.stringify({ error: err.message, partial: true }) : summarised[i];
+      toolResults.push({ type: 'tool_result', tool_use_id: block.id, content });
+
+      if (block.name === 'activate_skill' && onSkillActive) {
+        const skillInfo = listSkills().find(s => s.id === block.input.skill_id);
+        await onSkillActive({ id: block.input.skill_id, description: skillInfo?.description || '', triggers: [], alwaysOn: false });
+      }
+
+      // Emit plan_update SSE event after create_plan or update_plan_step tool execution
+      if ((block.name === 'create_plan' || block.name === 'update_plan_step') && !err) {
+        try {
+          const planResult = JSON.parse(content);
+          if (planResult && !planResult.error && onPlanUpdate) {
+            await onPlanUpdate(planResult);
+          }
+          // Persist plan state via the conversation store
+          if (state.conversationId) {
+            try {
+              const store = getConversationStore();
+              await store.savePlanState(state.conversationId, getAllPlans());
+            } catch (persistErr) {
+              console.warn(`[graph:plans] Failed to persist plan state: ${persistErr.message}`);
+            }
+          }
+        } catch {
+          // JSON parse failed — skip plan update
+        }
+      }
+
+      if (err) {
+        if (onToolStatus) await onToolStatus({ id: block._toolId, name: block.name, inputSummary: inputSummary(block.name, block.input), status: 'error', text: err.message });
+      } else {
+        const rs = resultSummary(block.name, content);
+        if (onToolStatus) await onToolStatus({ id: block._toolId, name: block.name, inputSummary: inputSummary(block.name, block.input), status: 'done', ...rs });
+      }
+    }
+
+    const finalMessages = [...newMessages, { role: 'user', content: toolResults }];
+
+    // Update plans state channel
+    const plans = getAllPlans();
+
+    return {
+      messages: finalMessages,
+      fullText,
+      stopReason,
+      turnCount: state.turnCount + 1,
+      plans,
+    };
   });
 
   // ── Node: research (one tool-use turn) ────────────────────────────────────
@@ -743,12 +947,19 @@ Return plain text only.`;
       compacted: { value: (_, n) => n ?? false, default: () => false },
       conversationId: { value: (_, n) => n ?? null, default: () => null },
       userId: { value: (_, n) => n ?? null, default: () => null },
+      // Parallel research state channels
+      researchContext: { value: (_, n) => n ?? '', default: () => '' },
+      fallbackToSequential: { value: (_, n) => n ?? false, default: () => false },
+      researchSummaries: { value: (_, n) => n ?? [], default: () => [] },
+      synthesisPath: { value: (_, n) => n ?? false, default: () => false },
     },
   });
 
   graph.addNode('preflight', preflightNode);
   graph.addNode('loadSkills', loadSkillsNode);
   graph.addNode('skillRouter', skillRouterNode);
+  graph.addNode('parallelResearch', parallelResearchNode);
+  graph.addNode('synthesise', synthesiseNode);
   graph.addNode('researchFanOut', researchFanOutNode);
   graph.addNode('sectionWriter', sectionWriterNode);
   graph.addNode('skillValidate', skillValidateNode);
@@ -774,7 +985,18 @@ Return plain text only.`;
   graph.addEdge('loadSkills', 'skillRouter');
 
   graph.addConditionalEdges('skillRouter', (state) => {
-    return state.executionMode === 'multi-node' ? 'researchFanOut' : 'research';
+    return state.executionMode === 'multi-node' ? 'researchFanOut' : 'parallelResearch';
+  });
+
+  // Parallel research: parallelResearch → synthesise (success) or research (fallback)
+  graph.addConditionalEdges('parallelResearch', (state) => {
+    return state.fallbackToSequential ? 'research' : 'synthesise';
+  });
+
+  // Synthesise loop: synthesise → compactIfNeeded (on tool_use), synthesise → validate (on end_turn)
+  graph.addConditionalEdges('synthesise', (state) => {
+    if (state.stopReason === 'tool_use' && state.turnCount < MAX_TURNS) return 'compactIfNeeded';
+    return 'validate';
   });
 
   // Research loop: research → compactIfNeeded → research (on tool_use), research → validate (on end_turn)
@@ -783,7 +1005,10 @@ Return plain text only.`;
     return 'validate';
   });
 
-  graph.addEdge('compactIfNeeded', 'research');
+  // compactIfNeeded routes back to synthesise or research depending on which path we're on
+  graph.addConditionalEdges('compactIfNeeded', (state) => {
+    return state.synthesisPath ? 'synthesise' : 'research';
+  });
 
   graph.addEdge('validate', '__end__');
   graph.addEdge('researchFanOut', 'sectionWriter');

@@ -3,9 +3,9 @@
     {
       "id": "cr-evaluator",
       "folder": "cr-evaluator",
-      "description": "CS feasibility evaluation rubric — always loaded",
-      "alwaysLoad": true,
-      "triggers": []
+      "description": "CS feasibility evaluation rubric — loaded for CR/BRD/issue requests",
+      "alwaysLoad": false,
+      "triggers": ["cr", "change request", "feasibility", "brd", "requirement"]
     },
     {
       "id": "capillary-sdd-writer",

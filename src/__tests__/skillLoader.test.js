@@ -172,12 +172,11 @@ describe('getSkillCatalogue', () => {
     expect(catalogue).toContain('(triggers: diagram, flow diagram');
   });
 
-  it('does not include trigger hints for skills with no triggers', () => {
+  it('includes trigger hints for cr-evaluator now that it has triggers', () => {
     const catalogue = getSkillCatalogue();
-    // cr-evaluator has empty triggers array — should not have "(triggers: )"
     const crLine = catalogue.split('\n').find(l => l.includes('**cr-evaluator**'));
     expect(crLine).toBeDefined();
-    expect(crLine).not.toContain('(triggers:');
+    expect(crLine).toContain('(triggers: cr, change request, feasibility, brd, requirement)');
   });
 
   it('ends with the activate_skill usage hint', () => {
