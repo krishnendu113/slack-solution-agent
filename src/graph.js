@@ -454,6 +454,7 @@ export function buildGraph(callbacks, baseSystemPrompt) {
         toolTags: state.toolTags,
         problemText: state.problemText,
         userId: state.userId,
+        messages: state.messages,
         onToolStatus,
       });
 

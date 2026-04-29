@@ -14,7 +14,7 @@
  *   - dispatchResearch(opts) — orchestrate parallel research agents
  */
 
-import { runToolAgent } from './subAgent.js';
+import { runToolAgent, runSubAgent } from './subAgent.js';
 import { getToolsByIntent } from './tools/index.js';
 
 // ─── Environment Configuration (Task 2.6) ─────────────────────────────────────
@@ -208,6 +208,61 @@ export function assembleResearchContext(summaries) {
 
 // ─── Research Dispatcher (Tasks 2.5, 2.7, 2.8) ────────────────────────────────
 
+// ─── Query Reformulation ───────────────────────────────────────────────────────
+
+const REFORMULATE_PROMPT = `You are a search query reformulator for a Capillary CS Solution Agent.
+
+Given a user's message and conversation history, produce 1-3 specific search queries that would find relevant information in Jira, Confluence, and product documentation.
+
+Rules:
+- If the user's message is a follow-up (e.g., "any other way?", "can we do it differently?"), use the conversation context to understand what "it" refers to.
+- Convert conversational language into specific technical search terms.
+- Include product names, feature names, module names, and technical terms from the conversation.
+- Return JSON only: { "queries": ["query1", "query2"], "context": "one sentence summary of what the user is asking about" }
+- Each query should be 3-10 words, suitable for searching Jira/Confluence/docs.
+- Return ONLY the JSON object, no other text.`;
+
+/**
+ * Reformulates a conversational user message into specific search queries
+ * using conversation history for context.
+ *
+ * @param {string} problemText - The user's latest message
+ * @param {Array} messages - Conversation history (role/content pairs)
+ * @returns {Promise<{ queries: string[], context: string }>}
+ */
+async function reformulateQuery(problemText, messages) {
+  // If the message already looks like a specific query (contains technical terms, ticket IDs, etc.), skip reformulation
+  if (/[A-Z]+-\d+/.test(problemText) || problemText.length > 100) {
+    return { queries: [problemText], context: problemText };
+  }
+
+  // Build a concise conversation summary (last 4 messages max)
+  const recentMessages = (messages || []).slice(-4);
+  const historyBlock = recentMessages
+    .map(m => `${m.role}: ${(typeof m.content === 'string' ? m.content : JSON.stringify(m.content)).slice(0, 300)}`)
+    .join('\n');
+
+  try {
+    const raw = await runSubAgent({
+      systemPrompt: REFORMULATE_PROMPT,
+      userContent: `Conversation history:\n${historyBlock}\n\nLatest user message: "${problemText}"`,
+      model: 'claude-haiku-4-5-20251001',
+      maxTokens: 256,
+      operation: 'query-reformulate',
+    });
+
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed.queries) && parsed.queries.length > 0) {
+      console.log(`[research:reformulate] "${problemText}" → ${JSON.stringify(parsed.queries)}`);
+      return { queries: parsed.queries, context: parsed.context || problemText };
+    }
+  } catch (err) {
+    console.warn(`[research:reformulate] Failed: ${err.message}, using raw query`);
+  }
+
+  return { queries: [problemText], context: problemText };
+}
+
 /**
  * Dispatches parallel Research Agents based on tool tags from preflight.
  * Each agent runs in its own runToolAgent() call with domain-scoped tools.
@@ -217,6 +272,7 @@ export function assembleResearchContext(summaries) {
  * @param {string[]} opts.toolTags - Tool category tags from preflight
  * @param {string} opts.problemText - The user's query
  * @param {string} opts.userId - For tool handler context
+ * @param {Array} [opts.messages] - Conversation history for query reformulation
  * @param {number} [opts.timeoutMs] - Per-agent timeout (default: RESEARCH_AGENT_TIMEOUT_MS)
  * @param {number} [opts.maxTurns] - Per-agent max turns (default: RESEARCH_AGENT_MAX_TURNS)
  * @param {Function} [opts.onToolStatus] - SSE callback for tool status events
@@ -226,6 +282,7 @@ export async function dispatchResearch({
   toolTags,
   problemText,
   userId,
+  messages = [],
   timeoutMs = RESEARCH_AGENT_TIMEOUT_MS,
   maxTurns = RESEARCH_AGENT_MAX_TURNS,
   onToolStatus,
@@ -237,6 +294,11 @@ export async function dispatchResearch({
   if (domains.length === 0) {
     return { summaries: [], allFailed: false };
   }
+
+  // 1.5. Reformulate the query using conversation context
+  const { queries, context: queryContext } = await reformulateQuery(problemText, messages);
+  const searchQuery = queries.join('\n\nAlso search for: ');
+  const agentUserContent = `User's question: ${problemText}\n\nSearch context: ${queryContext}\n\nSuggested search queries:\n${queries.map((q, i) => `${i + 1}. ${q}`).join('\n')}`;
 
   // 2. Build agent promises for each domain
   const agentPromises = domains.map(async (domain) => {
@@ -259,7 +321,7 @@ export async function dispatchResearch({
     // d. Run the agent with timeout via Promise.race
     const agentPromise = runToolAgent({
       systemPrompt: DOMAIN_PROMPTS[domain],
-      userContent: problemText,
+      userContent: agentUserContent,
       tools: domainTools,
       handle,
       model: 'claude-haiku-4-5-20251001',
