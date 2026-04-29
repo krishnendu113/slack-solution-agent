@@ -26,16 +26,16 @@ const VALID_MODELS = new Set([
 
 let _client = null;
 
-// Pre-load wrapSDK if tracing is enabled
-const _wrapSDKPromise = process.env.LANGCHAIN_TRACING_V2 === 'true'
-  ? import('langsmith/wrappers').then(m => m.wrapSDK).catch(() => null)
+// Pre-load wrapAnthropic if tracing is enabled
+const _wrapAnthropicPromise = process.env.LANGCHAIN_TRACING_V2 === 'true'
+  ? import('langsmith/wrappers/anthropic').then(m => m.wrapAnthropic).catch(() => null)
   : Promise.resolve(null);
 
 async function getClient() {
   if (!_client) {
     const raw = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-    const wrapSDK = await _wrapSDKPromise;
-    _client = wrapSDK ? wrapSDK(raw) : raw;
+    const wrapAnthropic = await _wrapAnthropicPromise;
+    _client = wrapAnthropic ? wrapAnthropic(raw) : raw;
   }
   return _client;
 }
