@@ -25,8 +25,18 @@ const VALID_MODELS = new Set([
 // ─── SDK Client ───────────────────────────────────────────────────────────────
 
 let _client = null;
-function getClient() {
-  if (!_client) _client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+// Pre-load wrapSDK if tracing is enabled
+const _wrapSDKPromise = process.env.LANGCHAIN_TRACING_V2 === 'true'
+  ? import('langsmith/wrappers').then(m => m.wrapSDK).catch(() => null)
+  : Promise.resolve(null);
+
+async function getClient() {
+  if (!_client) {
+    const raw = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const wrapSDK = await _wrapSDKPromise;
+    _client = wrapSDK ? wrapSDK(raw) : raw;
+  }
   return _client;
 }
 
@@ -54,7 +64,8 @@ export async function runSubAgent({
     );
   }
 
-  const response = await getClient().messages.create({
+  const client = await getClient();
+  const response = await client.messages.create({
     model,
     max_tokens: maxTokens,
     system: systemPrompt,

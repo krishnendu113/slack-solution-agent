@@ -35,8 +35,26 @@ function maybeTraceable(name, fn) {
 // ─── Anthropic client ────────────────────────────────────────────────────────
 
 let _client = null;
+
+// Pre-load wrapSDK if tracing is enabled
+const _wrapSDKPromise = process.env.LANGCHAIN_TRACING_V2 === 'true'
+  ? import('langsmith/wrappers').then(m => m.wrapSDK).catch(() => null)
+  : Promise.resolve(null);
+
+async function getClientAsync() {
+  if (!_client) {
+    const raw = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const wrapSDK = await _wrapSDKPromise;
+    _client = wrapSDK ? wrapSDK(raw) : raw;
+  }
+  return _client;
+}
+
+// Sync getter for backward compat — falls back to unwrapped if async hasn't resolved
 function getClient() {
-  if (!_client) _client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  if (!_client) {
+    _client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  }
   return _client;
 }
 
@@ -426,7 +444,7 @@ export function buildGraph(callbacks, baseSystemPrompt) {
 
   // ── Node: research (one tool-use turn) ────────────────────────────────────
   const researchNode = maybeTraceable('research', async (state) => {
-    const anthropic = getClient();
+    const anthropic = await getClientAsync();
     const { definitions: tools, handle } = getToolsByIntent(state.toolTags, { userId: state.userId });
     const maxTokens = parseInt(process.env.MAX_AGENT_TOKENS || '8000', 10);
 
