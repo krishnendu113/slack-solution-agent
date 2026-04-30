@@ -75,6 +75,16 @@ app.get('/api/conversations', async (req, res) => {
   res.json(await convStore.listConversations(req.session.userId));
 });
 
+app.get('/api/conversations/search', async (req, res) => {
+  const query = (req.query.q || '').trim();
+  const limit = Math.max(1, Math.min(20, parseInt(req.query.limit, 10) || 5));
+  if (!query) return res.json({ results: [] });
+
+  const convStore = getConversationStore();
+  const results = await convStore.searchConversations(req.session.userId, query, limit);
+  res.json({ results });
+});
+
 app.post('/api/conversations', async (req, res) => {
   const { message } = req.body;
   if (!message?.trim()) {
