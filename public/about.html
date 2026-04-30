@@ -259,7 +259,7 @@
     <h2>Specialist skills</h2>
     <p class="section-desc">The agent can activate specialist capabilities depending on what you ask for — like calling in a subject matter expert.</p>
     <div class="card-grid cols-2" style="margin-top:4px">
-      <div class="card"><h3>🎯 CR Evaluator</h3><p>Always-on feasibility rubric. Knows what's OOTB, what needs configuration, and what requires custom development in Capillary.</p></div>
+      <div class="card"><h3>🎯 CR Evaluator</h3><p>Feasibility rubric loaded automatically for CR, BRD, and issue requests. Knows what's OOTB, what needs configuration, and what requires custom development in Capillary. Omitted for general queries to save tokens.</p></div>
       <div class="card"><h3>📄 SDD Writer</h3><p>Generates Solution Design Documents with parallel research and section-by-section writing. Delivered as a downloadable file.</p></div>
       <div class="card"><h3>📊 Gap Analyzer</h3><p>Compares a BRD against Capillary capabilities. Scores each domain, identifies gaps, and suggests resolution paths.</p></div>
       <div class="card"><h3>🖼️ Diagram Generator</h3><p>Creates visual architecture diagrams as Excalidraw JSON for solution architecture visualisation.</p></div>
@@ -293,6 +293,7 @@
       <div class="opt-item"><span class="opt-icon">🗜️</span><div><strong>Context compaction</strong> <span>— When conversations get long, older messages are automatically summarised by Haiku to keep the context window lean. The full history is always preserved in the database.</span></div></div>
       <div class="opt-item"><span class="opt-icon">🚪</span><div><strong>Off-topic gate</strong> <span>— A fast Haiku classifier intercepts irrelevant requests before they reach the main loop, saving Sonnet tokens and keeping the agent focused.</span></div></div>
       <div class="opt-item"><span class="opt-icon">🔧</span><div><strong>Intent-based tool loading</strong> <span>— Only tools relevant to the user's question are included in each API call, reducing noise and token overhead.</span></div></div>
+      <div class="opt-item"><span class="opt-icon">🔀</span><div><strong>Parallel research agents</strong> <span>— Domain-specific Haiku sub-agents research Jira, Confluence, and docs simultaneously instead of sequential Sonnet calls. 3-5× faster, 60-70% cheaper.</span></div></div>
     </div>
   </section>
 
@@ -328,6 +329,38 @@
   </section>
 
   <section>
+    <h2>Conversation search</h2>
+    <p class="section-desc">Find past conversations instantly without scrolling through the sidebar.</p>
+    <div class="opt-list">
+      <div class="opt-item"><span class="opt-icon">🔍</span><div><strong>Sidebar search bar</strong> <span>— Type to search across all your conversations. Results appear in real-time with matching snippets highlighted.</span></div></div>
+      <div class="opt-item"><span class="opt-icon">⚡</span><div><strong>Debounced search</strong> <span>— Searches fire 300ms after you stop typing, keeping the UI responsive without excessive API calls.</span></div></div>
+      <div class="opt-item"><span class="opt-icon">🔒</span><div><strong>User-scoped</strong> <span>— You only see your own conversations. Search results are scoped to your account at the database level.</span></div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Agent planning</h2>
+    <p class="section-desc">For complex requests, the agent automatically creates a structured plan and tracks progress in real-time.</p>
+    <div class="card-grid cols-2">
+      <div class="card"><h3>📋 Auto-planning</h3><p>The agent automatically creates a plan when the request involves multiple research steps, sequential actions, or multi-part analysis. Simple lookups skip planning entirely.</p></div>
+      <div class="card"><h3>📊 Live progress</h3><p>Plan cards appear in the chat showing each step with status icons — pending ○, in progress ●, completed ✓, skipped ⊘. Steps update in real-time as the agent works.</p></div>
+      <div class="card"><h3>💾 Persistent plans</h3><p>Plans are saved alongside conversations in MongoDB. Reload the page or come back later — the plan state is preserved exactly as you left it.</p></div>
+      <div class="card"><h3>▶ Continue Plan</h3><p>If a plan has incomplete steps, a "Continue Plan" button lets you resume where the agent left off — enabling long-running research or document writing across multiple turns.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Parallel research agents</h2>
+    <p class="section-desc">Instead of searching sources one at a time, the agent dispatches specialist sub-agents that research in parallel — then synthesises everything in a single pass.</p>
+    <div class="opt-list">
+      <div class="opt-item"><span class="opt-icon">🔀</span><div><strong>Parallel dispatch</strong> <span>— Jira, Confluence, Kapa docs, and web search agents run simultaneously, each powered by the fast Haiku model. Research that used to take 15-20 seconds now completes in 3-5 seconds.</span></div></div>
+      <div class="opt-item"><span class="opt-icon">🧠</span><div><strong>Query reformulation</strong> <span>— Follow-up questions like "any other way?" are automatically reformulated into specific search terms using conversation context, so research agents find relevant results.</span></div></div>
+      <div class="opt-item"><span class="opt-icon">📝</span><div><strong>Structured summaries</strong> <span>— Each research agent returns a concise structured summary (~500 tokens) instead of raw tool output. The synthesis model sees clean, focused context.</span></div></div>
+      <div class="opt-item"><span class="opt-icon">🛡️</span><div><strong>Graceful fallback</strong> <span>— If all parallel agents fail, the system automatically falls back to the sequential research loop. The user always gets a response.</span></div></div>
+    </div>
+  </section>
+
+  <section>
     <h2>What's next</h2>
     <p class="section-desc">Completed milestones and upcoming improvements.</p>
     
@@ -337,14 +370,16 @@
       <div class="roadmap-item" style="border-color:var(--green-border);background:var(--green-bg)"><div class="roadmap-num" style="background:var(--green-bg);color:var(--green)">✓</div><div><h3>Context compaction</h3><p>Long conversations are automatically summarised to keep the agent fast without losing important context.</p></div></div>
       <div class="roadmap-item" style="border-color:var(--green-border);background:var(--green-bg)"><div class="roadmap-num" style="background:var(--green-bg);color:var(--green)">✓</div><div><h3>Smart tool & skill loading</h3><p>Intent-based classification loads only relevant tools and skills per request, reducing token usage and improving accuracy.</p></div></div>
       <div class="roadmap-item" style="border-color:var(--green-border);background:var(--green-bg)"><div class="roadmap-num" style="background:var(--green-bg);color:var(--green)">✓</div><div><h3>Off-topic filtering & user management</h3><p>Gate blocks irrelevant requests before they reach the main loop. Full admin panel with password policies, lockout, and audit logging.</p></div></div>
+      <div class="roadmap-item" style="border-color:var(--green-border);background:var(--green-bg)"><div class="roadmap-num" style="background:var(--green-bg);color:var(--green)">✓</div><div><h3>Conversation history search</h3><p>Search bar in the sidebar to find past conversations by keyword. Results show matching snippets with highlighted text.</p></div></div>
+      <div class="roadmap-item" style="border-color:var(--green-border);background:var(--green-bg)"><div class="roadmap-num" style="background:var(--green-bg);color:var(--green)">✓</div><div><h3>Agent planning tools</h3><p>Automatic plan creation for complex tasks with real-time progress tracking, persistent plans across sessions, and "Continue Plan" for long-running work.</p></div></div>
+      <div class="roadmap-item" style="border-color:var(--green-border);background:var(--green-bg)"><div class="roadmap-num" style="background:var(--green-bg);color:var(--green)">✓</div><div><h3>Parallel research agents</h3><p>Domain-specific Haiku sub-agents research Jira, Confluence, and docs in parallel, with query reformulation and structured summaries for cleaner synthesis.</p></div></div>
     </div>
 
     <h3 style="margin-bottom:12px;color:var(--accent)">🔮 Upcoming</h3>
     <div class="roadmap-list">
-      <div class="roadmap-item"><div class="roadmap-num">1</div><div><h3>Conversation history search</h3><p>Search across past conversations to find relevant precedents and reuse previous research — already built in the API, UI coming soon.</p></div></div>
-      <div class="roadmap-item"><div class="roadmap-num">2</div><div><h3>Agent planning tools</h3><p>Structured step-by-step plans for complex requests, visible in real-time via the chat UI — API ready, UI integration pending.</p></div></div>
-      <div class="roadmap-item"><div class="roadmap-num">3</div><div><h3>Model-agnostic architecture</h3><p>Abstract the AI model layer so the agent can work with OpenAI, Google Gemini, or open-source models — not just Anthropic Claude.</p></div></div>
-      <div class="roadmap-item"><div class="roadmap-num">4</div><div><h3>Analytics dashboard</h3><p>Usage metrics, cost tracking per user/skill, response quality monitoring, and audit log viewer for admins.</p></div></div>
+      <div class="roadmap-item"><div class="roadmap-num">1</div><div><h3>Model-agnostic architecture</h3><p>Abstract the AI model layer so the agent can work with OpenAI, Google Gemini, or open-source models — not just Anthropic Claude.</p></div></div>
+      <div class="roadmap-item"><div class="roadmap-num">2</div><div><h3>Analytics dashboard</h3><p>Usage metrics, cost tracking per user/skill, response quality monitoring, and audit log viewer for admins.</p></div></div>
+      <div class="roadmap-item"><div class="roadmap-num">3</div><div><h3>Multi-conversation context</h3><p>Let the agent reference findings from past conversations when answering new questions — building institutional knowledge over time.</p></div></div>
     </div>
   </section>
 
