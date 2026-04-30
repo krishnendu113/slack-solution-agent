@@ -54,9 +54,25 @@ Analyse the user message and return a single JSON object (no prose, no markdown 
 
 offTopicConfidence: how confident you are that the message is NOT related to Capillary CS work.
 - 0.0: clearly on-topic (Capillary product, client request, Jira ticket, solution design, CS workflow)
-- 0.85-1.0: clearly off-topic (personal chat, unrelated tech, jokes, general knowledge)
-- Only set offTopicConfidence >= 0.85 for messages that are CLEARLY unrelated to Capillary CS work.
-- When in doubt, lean towards on-topic (lower confidence).
+- 1.0: clearly off-topic
+
+IMPORTANT — set offTopicConfidence >= 0.90 for ANY of these:
+- General knowledge questions (geography, history, science, math, trivia)
+- Personal questions, greetings, jokes, small talk
+- Technology questions NOT about Capillary products (e.g., "how does React work?")
+- News, weather, sports, entertainment
+- Coding help not related to Capillary integrations
+- Any question that a general-purpose AI assistant would answer but has NOTHING to do with Capillary Technologies, its products, clients, Jira tickets, Confluence docs, or CS team workflows
+
+Set offTopicConfidence < 0.50 for:
+- Questions mentioning Capillary products (Loyalty+, Engage+, Insights+, Connect+, Marvel Games, etc.)
+- Jira ticket IDs or references
+- Client names or client requirements
+- Change requests, BRDs, feasibility questions
+- Solution architecture or implementation questions
+- Questions about Capillary APIs, modules, configurations
+
+When in doubt between on-topic and off-topic, lean towards ON-TOPIC (lower confidence).
 
 ## Request Classification
 
@@ -233,12 +249,5 @@ export async function runPreflight(problemText) {
  * @returns {string}
  */
 function buildRefusalMessage(reason) {
-  const base = "I appreciate your message, but I'm specifically designed to help with Capillary Technologies CS work — things like product feasibility assessments, change requests, Jira ticket analysis, and solution design.";
-  const suggestion = "If your question is related to Capillary CS work, could you rephrase it with that context? I'd be happy to help.";
-
-  if (reason) {
-    return `${base}\n\n${suggestion}`;
-  }
-
-  return `${base}\n\n${suggestion}`;
+  return "This doesn't seem related to Capillary CS work. I can help with product feasibility, change requests, Jira tickets, and solution design. Please rephrase if your question is Capillary-related.";
 }
