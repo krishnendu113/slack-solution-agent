@@ -103,7 +103,7 @@ function resultSummary(name, result) {
 }
 
 async function summariseToolResult(toolName, rawResult, problemContext = '') {
-  const SUMMARISE_SYSTEM_PROMPT = `You are a tool result summariser for a Capillary CS Solution Agent.
+  const SUMMARISE_SYSTEM_PROMPT = `You are a tool result summariser for a Capillary Professional Services Solution Agent.
 Given a raw tool result, produce a 2-sentence relevance summary and the primary URL.
 Return JSON only: { "summary": "...", "url": "https://..." }
 If no URL is present, set url to null. Keep summary under 150 words.`;

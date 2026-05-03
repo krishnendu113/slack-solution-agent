@@ -4,8 +4,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this project is
 
-A web-based chat agent for the Capillary Technologies Customer Success (CS) team.
-CS engineers paste Jira ticket IDs, describe client requirements, or upload documents.
+A web-based chat agent for the Capillary Technologies Professional Services (PS) team.
+PS engineers paste Jira ticket IDs, describe client requirements, or upload documents.
 The agent analyses them using Claude, searches Jira, Confluence, Kapa docs, and
 docs.capillarytech.com, dynamically loads specialist skills, and returns structured
 solution assessments — or flags for SA escalation.
@@ -158,7 +158,7 @@ Two activation modes via `skills/registry.json`:
 
 The agent can also call `activate_skill` dynamically at runtime.
 
-**Always-on skills:** `cr-evaluator` — the CS feasibility evaluation rubric (OOTB/Config/Custom/Not Feasible definitions, Capillary module map, complexity scoring guide). Always included in every request.
+**Always-on skills:** `cr-evaluator` — the PS feasibility evaluation rubric (OOTB/Config/Custom/Not Feasible definitions, Capillary module map, complexity scoring guide). Always included in every request.
 
 **To add a skill:** create `skills/my-skill/SKILL.md`, add an entry to `skills/registry.json`
 with `id`, `folder`, `description`, and `triggers` (and optionally `alwaysLoad: true`). No JS changes needed.

@@ -14,7 +14,7 @@ function slugify(name) {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 }
 
-const DETECT_SYSTEM_PROMPT = `You are a client name extractor. Given a CS support request, extract the client/company name if explicitly mentioned.
+const DETECT_SYSTEM_PROMPT = `You are a client name extractor. Given a Professional Services support request, extract the client/company name if explicitly mentioned.
 
 Return JSON only — no prose, no markdown:
 { "client": "Client Name" }

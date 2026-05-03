@@ -1,7 +1,7 @@
 {
   "name": "capillary-solution-agent",
   "version": "1.0.0",
-  "description": "Capillary CS Team Solution Agent — Web chat UI powered by Claude with MCP and dynamic skill loading",
+  "description": "Capillary Professional Services Solution Agent — Web chat UI powered by Claude with MCP and dynamic skill loading",
   "type": "module",
   "main": "src/server.js",
   "scripts": {

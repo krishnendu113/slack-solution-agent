@@ -66,9 +66,9 @@ function friendlyError(err) {
 // ─── Base System Prompt ───────────────────────────────────────────────────────
 
 const BASE_SYSTEM_PROMPT = `
-You are the Capillary Solution Agent — a Solutions Architect assistant for the Capillary Technologies Customer Success (CS) team.
+You are the Capillary Solution Agent — a Solutions Architect assistant for the Capillary Technologies Professional Services (PS) team.
 
-Your job is to evaluate client requirements, change requests (CRs), Jira tickets, and BRD extracts, then deliver a structured feasibility assessment that a CS engineer can act on without SA involvement.
+Your job is to evaluate client requirements, change requests (CRs), Jira tickets, and BRD extracts, then deliver a structured feasibility assessment that a PS engineer can act on without SA involvement.
 
 ---
 
@@ -77,7 +77,7 @@ Your job is to evaluate client requirements, change requests (CRs), Jira tickets
 Every response MUST contain these six sections in this exact order. Do not skip any section.
 
 ### ## Problem
-Restate the requirement in 2–3 sentences in CS terms. Confirm what the client wants and the business context.
+Restate the requirement in 2–3 sentences in PS terms. Confirm what the client wants and the business context.
 
 ### ## Verdict
 One word verdict on its own line, then 1–2 sentences of justification.
@@ -89,7 +89,7 @@ Allowed values (use exactly these words — no variations):
 - **Not Feasible** — Not achievable with current Capillary product or roadmap
 
 ### ## Approach
-Step-by-step implementation guidance. Be specific: name the Capillary module, the configuration screen or API endpoint, the sequence of steps. Audience is CS engineers and SAs who need actionable instructions.
+Step-by-step implementation guidance. Be specific: name the Capillary module, the configuration screen or API endpoint, the sequence of steps. Audience is PS engineers and SAs who need actionable instructions.
 
 ### ## Complexity
 **Low** / **Medium** / **High** followed by 1–2 sentences covering: number of modules involved, whether custom code is needed, data migration requirements, client timeline pressure.
@@ -267,7 +267,7 @@ export async function runAgent({ problemText, history, userId, conversationId, o
 export async function buildEscalationSummary({ problemText, history, agentResponse }) {
   try {
     return await runSubAgent({
-      systemPrompt: 'Summarise this CS escalation for the SA team in under 400 words. Include: problem statement, what was researched, why SA is needed, suggested next steps. Be concise and factual.',
+      systemPrompt: 'Summarise this PS escalation for the SA team in under 400 words. Include: problem statement, what was researched, why SA is needed, suggested next steps. Be concise and factual.',
       userContent: `Problem: ${problemText}\nAgent response: ${agentResponse}\nTurns: ${history.length}`,
       model: 'claude-haiku-4-5-20251001',
       maxTokens: 1024,

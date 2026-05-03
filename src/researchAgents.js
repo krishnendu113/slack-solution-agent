@@ -44,7 +44,7 @@ const RESEARCH_SUMMARY_SCHEMA_INSTRUCTION = `Return your findings as a JSON obje
 Maximum 5 findings. Return ONLY the JSON object, no other text.`;
 
 export const DOMAIN_PROMPTS = {
-  jira: `You are a Jira research agent for the Capillary CS team. Your job is to search Jira for tickets related to the user's query and retrieve detailed information.
+  jira: `You are a Jira research agent for the Capillary Professional Services team. Your job is to search Jira for tickets related to the user's query and retrieve detailed information.
 
 You have access to these tools:
 - search_jira: Search for Jira tickets by keyword
@@ -60,7 +60,7 @@ Instructions:
 
 ${RESEARCH_SUMMARY_SCHEMA_INSTRUCTION}`,
 
-  confluence: `You are a Confluence research agent for the Capillary CS team. Your job is to search Confluence for pages related to the user's query and retrieve detailed content.
+  confluence: `You are a Confluence research agent for the Capillary Professional Services team. Your job is to search Confluence for pages related to the user's query and retrieve detailed content.
 
 You have access to these tools:
 - search_confluence: Search for Confluence pages by keyword
@@ -75,7 +75,7 @@ Instructions:
 
 ${RESEARCH_SUMMARY_SCHEMA_INSTRUCTION}`,
 
-  kapa_docs: `You are a documentation research agent for the Capillary CS team. Your job is to search product documentation for information related to the user's query.
+  kapa_docs: `You are a documentation research agent for the Capillary Professional Services team. Your job is to search product documentation for information related to the user's query.
 
 You have access to these tools:
 - search_kapa_docs: Search Kapa AI-indexed documentation
@@ -90,7 +90,7 @@ Instructions:
 
 ${RESEARCH_SUMMARY_SCHEMA_INSTRUCTION}`,
 
-  web_search: `You are a web search research agent for the Capillary CS team. Your job is to search the documentation site for pages related to the user's query when other domain-specific agents have not been spawned.
+  web_search: `You are a web search research agent for the Capillary Professional Services team. Your job is to search the documentation site for pages related to the user's query when other domain-specific agents have not been spawned.
 
 You have access to these tools:
 - search_docs_site: Search the documentation site by keyword
@@ -210,7 +210,7 @@ export function assembleResearchContext(summaries) {
 
 // ─── Query Reformulation ───────────────────────────────────────────────────────
 
-const REFORMULATE_PROMPT = `You are a search query reformulator for a Capillary CS Solution Agent.
+const REFORMULATE_PROMPT = `You are a search query reformulator for a Capillary Professional Services Solution Agent.
 
 Given a user's message and conversation history, produce 1-3 specific search queries that would find relevant information in Jira, Confluence, and Capillary product documentation.
 
@@ -219,7 +219,7 @@ Rules:
 - Convert conversational language into specific technical search terms related to Capillary products.
 - Include Capillary product names, feature names, module names, and technical terms from the conversation.
 - Focus on Capillary-relevant terms: Loyalty+, Engage+, Insights+, Connect+, Marvel Games, CRM, campaigns, rewards, points, tiers, segments, etc.
-- If the query has NOTHING to do with Capillary products or CS work, return: { "queries": [], "context": "off-topic" }
+- If the query has NOTHING to do with Capillary products or Professional Services work, return: { "queries": [], "context": "off-topic" }
 - Return JSON only: { "queries": ["query1", "query2"], "context": "one sentence summary of what the user is asking about" }
 - Each query should be 3-10 words, suitable for searching Jira/Confluence/docs.
 - Return ONLY the JSON object, no other text.`;
