@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CXO Q&A Prep — Capillary 360</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%230066cc'/><text x='16' y='22' font-family='system-ui,sans-serif' font-size='14' font-weight='700' fill='white' text-anchor='middle'>360</text></svg>">
+  <script>(function(){ var t=localStorage.getItem('theme'); if(t==='dark') document.documentElement.setAttribute('data-theme','dark'); })();</script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{--bg:#fff;--bg2:#f7f7f8;--bgc:#fff;--tp:#1a1a1a;--ts:#4b5563;--tm:#6b7280;--bd:#e5e7eb;--ac:#0066cc;--acl:#e0f0ff;--gn:#16a34a;--gnb:#f0fdf4;--gnbd:#bbf7d0;--am:#d97706;--amb:#fffbeb;--ambd:#fde68a;--bl:#2563eb;--blb:#eff6ff;--blbd:#bfdbfe;--pr:#7c3aed;--prb:#f5f3ff;--prbd:#ddd6fe;--tl:#0d9488;--tlb:#f0fdfa;--tlbd:#99f6e4;--rd:#dc2626;--rdb:#fef2f2;--rdbd:#fecaca;--or:#ea580c;--orb:#fff7ed;--orbd:#fed7aa;--navbg:rgba(255,255,255,0.85);--navbd:#e5e7eb;--sh:0 1px 3px rgba(0,0,0,0.06);--shl:0 4px 16px rgba(0,0,0,0.08);--cn:#cbd5e1}
+    [data-theme="dark"]{--bg:#0f172a;--bg2:#1e293b;--bgc:#1e293b;--tp:#f1f5f9;--ts:#94a3b8;--tm:#64748b;--bd:#334155;--ac:#3b82f6;--acl:#1e3a5f;--gn:#34d399;--gnb:#064e3b;--gnbd:#065f46;--am:#fbbf24;--amb:#78350f;--ambd:#92400e;--bl:#60a5fa;--blb:#1e3a5f;--blbd:#1e40af;--pr:#a78bfa;--prb:#2e1065;--prbd:#3b0764;--tl:#2dd4bf;--tlb:#134e4a;--tlbd:#115e59;--rd:#f87171;--rdb:#450a0a;--rdbd:#7f1d1d;--or:#fb923c;--orb:#431407;--orbd:#7c2d12;--navbg:rgba(15,23,42,0.9);--navbd:#334155;--sh:0 1px 3px rgba(0,0,0,0.3);--shl:0 4px 16px rgba(0,0,0,0.4);--cn:#475569}
+    html{scroll-behavior:smooth;scroll-padding-top:72px}
+    body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--tp);line-height:1.6;-webkit-font-smoothing:antialiased}
+    .nav{position:fixed;top:0;left:0;right:0;height:56px;background:var(--navbg);backdrop-filter:blur(12px);border-bottom:1px solid var(--navbd);display:flex;align-items:center;justify-content:space-between;padding:0 24px;z-index:100}
+    .nav-title{font-size:15px;font-weight:600;display:flex;align-items:center;gap:10px}
+    .nav-logo{width:28px;height:28px;border-radius:6px;background:linear-gradient(135deg,var(--ac),var(--pr));display:flex;align-items:center;justify-content:center;color:white;font-size:10px;font-weight:700}
+    .nav-right{display:flex;align-items:center;gap:12px}
+    .nav-link{font-size:13px;color:var(--tm);text-decoration:none;cursor:pointer}
+    .nav-link:hover{color:var(--ac)}
+    .theme-toggle{background:none;border:1px solid var(--bd);border-radius:8px;padding:5px 10px;cursor:pointer;font-size:15px;color:var(--ts);line-height:1}
+    .page{max-width:860px;margin:0 auto;padding:80px 24px 64px}
+    .hero{text-align:center;padding:48px 0 40px}
+    .hero h1{font-size:32px;font-weight:700;letter-spacing:-0.02em;margin-bottom:12px}
+    .hero .sub{font-size:16px;color:var(--ts);max-width:560px;margin:0 auto}
+    .divider{border:none;border-top:1px solid var(--bd);margin:40px 0}
+    .category{margin-bottom:48px}
+    .category h2{font-size:18px;font-weight:700;margin-bottom:4px;display:flex;align-items:center;gap:8px}
+    .category .cat-desc{font-size:13px;color:var(--tm);margin-bottom:20px}
+    .qa{margin-bottom:20px;border:1px solid var(--bd);border-radius:12px;overflow:hidden;box-shadow:var(--sh)}
+    .qa-q{padding:16px 20px;background:var(--bg2);font-size:14px;font-weight:600;color:var(--tp);cursor:pointer;display:flex;align-items:center;gap:10px}
+    .qa-q::before{content:'Q';font-size:11px;font-weight:700;background:var(--ac);color:white;border-radius:4px;padding:2px 6px;flex-shrink:0}
+    .qa-a{padding:16px 20px;font-size:14px;color:var(--ts);line-height:1.7;border-top:1px solid var(--bd)}
+    .qa-a strong{color:var(--tp)}
+    .qa-a .tip{margin-top:12px;padding:10px 14px;background:var(--gnb);border:1px solid var(--gnbd);border-radius:8px;font-size:13px;color:var(--gn)}
+    .qa-a .tip::before{content:'💡 Demo tip: ';font-weight:600}
+    .qa-a .warn{margin-top:12px;padding:10px 14px;background:var(--amb);border:1px solid var(--ambd);border-radius:8px;font-size:13px;color:var(--am)}
+    .qa-a .warn::before{content:'⚠️ Watch out: ';font-weight:600}
+    .qa-a ul{margin:8px 0 8px 20px;display:flex;flex-direction:column;gap:4px}
+    .qa-a li{font-size:13px}
+    .footer{text-align:center;padding:32px 0;border-top:1px solid var(--bd);font-size:13px;color:var(--tm)}
+    @media(max-width:640px){.hero h1{font-size:26px}.page{padding:72px 16px 48px}}
+  </style>
+</head>
+<body>
+<nav class="nav">
+  <div class="nav-title"><div class="nav-logo">360</div> CXO Q&A Prep</div>
+  <div class="nav-right">
+    <a class="nav-link" href="/about.html">360 Vision</a>
+    <a class="nav-link" href="/agent.html">Agent Details</a>
+    <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Toggle dark/light mode">🌙</button>
+  </div>
+</nav>
+<div class="page">
+
+  <section class="hero">
+    <h1>CXO Demo — Anticipated Questions & Answers</h1>
+    <p class="sub">Prepared responses for the most likely questions from leadership during the Capillary 360 funding pitch.</p>
+  </section>
+
+  <hr class="divider">
+
+  <!-- ROI & Business Value -->
+  <div class="category">
+    <h2>💰 ROI & Business Value</h2>
+    <p class="cat-desc">CXOs will want hard numbers and business justification</p>
+
+    <div class="qa">
+      <div class="qa-q">What's the ROI? How do we justify the investment?</div>
+      <div class="qa-a">
+        <strong>Answer:</strong> Three measurable returns:
+        <ul>
+          <li><strong>Time savings:</strong> BRD creation goes from 3-5 days to 15 minutes. Gap analysis from 2-3 days to always-current. That's 60-70% of SA/PM time freed up.</li>
+          <li><strong>Revenue protection:</strong> Real-time sentiment detection catches at-risk accounts weeks before escalation. One saved enterprise renewal pays for the platform.</li>
+          <li><strong>Revenue growth:</strong> Continuous gap analysis surfaces upsell opportunities automatically. Sales gets "Client X uses 40% of licensed modules" alerts without asking.</li>
+        </ul>
+        <p style="margin-top:8px">Conservative estimate: if we save each SA 15 hours/week and enable 3x more project throughput, the platform pays for itself within one quarter.</p>
+        <div class="tip">Show the live agent generating a BRD assessment in under 60 seconds vs. the manual process.</div>
+      </div>
+    </div>
+
+    <div class="qa">
+      <div class="qa-q">What does this cost to run? What's the AI spend?</div>
+      <div class="qa-a">
+        <strong>Answer:</strong> We've engineered aggressive cost optimization:
+        <ul>
+          <li><strong>Dual-model architecture:</strong> Expensive reasoning model (Sonnet) only for complex analysis. Fast model (Haiku) for 80% of tasks at ~50x lower cost.</li>
+          <li><strong>Parallel research agents:</strong> 60-70% cheaper than sequential Sonnet calls.</li>
+          <li><strong>Off-topic gate:</strong> Blocks irrelevant requests before they hit the expensive model.</li>
+          <li><strong>Context compaction:</strong> Keeps token usage lean on long conversations.</li>
+        </ul>
+        <p style="margin-top:8px">Current production cost: approximately $0.15-0.50 per complex assessment. Document generation (SDD/BRD): $1-3 per document. Compare to 4-8 hours of SA time at loaded cost.</p>
+        <div class="tip">Show the LangSmith trace with cost breakdown for a real request.</div>
+      </div>
+    </div>
+
+    <div class="qa">
+      <div class="qa-q">How does this impact headcount? Are we replacing people?</div>
+      <div class="qa-a">
+        <strong>Answer:</strong> No. We're <strong>multiplying capacity</strong>, not replacing people. The platform handles the repetitive information gathering and document maintenance that consumes 60-70% of SA/PM time today. This frees them to focus on what humans do best: client relationships, creative problem-solving, and strategic decisions.
+        <p style="margin-top:8px">The goal is 3x more projects per SA — not fewer SAs. We're capacity-constrained today, not headcount-heavy.</p>
+        <div class="warn">Never frame this as "replacing" anyone. Frame as "enabling the team to handle 3x the workload without burning out."</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Trust & Safety -->
+  <div class="category">
+    <h2>🛡️ Trust, Safety & Accuracy</h2>
+    <p class="cat-desc">The #1 concern for CXOs — can we trust AI output?</p>
+
+    <div class="qa">
+      <div class="qa-q">How do we know the AI isn't hallucinating? What if it gives wrong information to a client?</div>
+      <div class="qa-a">
+        <strong>Answer:</strong> Multiple layers of protection:
+        <ul>
+          <li><strong>Research-first:</strong> The agent NEVER guesses. It searches Jira, Confluence, and product docs before every answer. Every claim is backed by a source link.</li>
+          <li><strong>Validation node:</strong> Every response passes through a quality check that verifies sources exist and conclusions follow from evidence.</li>
+          <li><strong>Human-in-the-loop:</strong> No document is published, no action is taken without human approval. The AI drafts — humans decide.</li>
+          <li><strong>Confidence flagging:</strong> When the agent isn't sure, it explicitly says so and flags for SA review rather than guessing.</li>
+        </ul>
+        <div class="tip">During demo, ask the agent something it can't find in the sources. Show how it responds with "No precedent found" rather than making something up.</div>
+      </div>
+    </div>
+
+    <div class="qa">
+      <div class="qa-q">What about data security? Is client data going to OpenAI/Anthropic?</div>
+      <div class="qa-a">
+        <strong>Answer:</strong> 
+        <ul>
+          <li><strong>Enterprise API:</strong> We use Anthropic's enterprise API with zero data retention — they don't train on our data, don't store it, don't log it.</li>
+          <li><strong>Data stays in our infra:</strong> MongoDB Atlas (SOC 2 compliant), Railway deployment (our control), all within our security perimeter.</li>
+          <li><strong>User isolation:</strong> Every user only sees their own conversations. Role-based access at the database level.</li>
+          <li><strong>Audit trail:</strong> Every action logged with timestamps and actor identification.</li>
+        </ul>
+        <div class="tip">Show the admin panel with audit logs. Mention Anthropic's enterprise data policy explicitly.</div>
+      </div>
+    </div>
+
+    <div class="qa">
+      <div class="qa-q">What happens when the AI makes a mistake? Who's accountable?</div>
+      <div class="qa-a">
+        <strong>Answer:</strong> The AI is a <strong>tool, not a decision-maker</strong>. Every output goes through human review before it reaches a client or becomes official. The accountability chain is unchanged — the SA/PM who approves the output owns it, just like they own a document they wrote manually.
+        <p style="margin-top:8px">The difference: they're reviewing a well-researched draft instead of starting from scratch. The quality bar is the same — the speed is 10x faster.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Technical Feasibility -->
+  <div class="category">
+    <h2>⚙️ Technical Feasibility & Timeline</h2>
+    <p class="cat-desc">Can we actually build this? How long will it take?</p>
+
+    <div class="qa">
+      <div class="qa-q">This sounds ambitious. What's actually built vs. what's a slide deck?</div>
+      <div class="qa-a">
+        <strong>Answer:</strong> The core is <strong>live in production today</strong>:
+        <ul>
+          <li>✅ Multi-source research agent (Jira, Confluence, product docs)</li>
+          <li>✅ 5 specialist skills (CR Evaluator, BRD Pipeline, SDD Writer, Gap Analyzer, Diagrams)</li>
+          <li>✅ LangGraph orchestration with parallel research</li>
+          <li>✅ Multi-user auth, MongoDB persistence, observability</li>
+          <li>✅ Context compaction, agent planning, cross-conversation memory</li>
+        </ul>
+        <p style="margin-top:8px">What we're proposing is <strong>unifying and extending</strong> proven components — not building from scratch. The architecture patterns are battle-tested.</p>
+        <div class="tip">Do a LIVE demo. Show a real query being processed end-to-end. Nothing beats seeing it work.</div>
+      </div>
+    </div>
+
+    <div class="qa">
+      <div class="qa-q">What's the timeline to full Capillary 360?</div>
+      <div class="qa-a">
+        <strong>Answer:</strong> Phased delivery over 6-9 months:
+        <ul>
+          <li><strong>Month 1-2:</strong> Gatherer Layer — webhook listeners, email ingestion, indexing pipeline</li>
+          <li><strong>Month 2-3:</strong> Impact Dependency Graph + Processor Agent Manager</li>
+          <li><strong>Month 3-4:</strong> Processing agents (BRD, Sentiment, Gap auto-refresh)</li>
+          <li><strong>Month 4-5:</strong> Resource Intelligence module</li>
+          <li><strong>Month 5-6:</strong> Consumer Agent personas (CSM, Sales, SA, PM)</li>
+          <li><strong>Month 6-9:</strong> Software Factory pipelines + Neo/codebase integration</li>
+        </ul>
+        <p style="margin-top:8px">Each phase delivers standalone value. We don't need to wait 9 months for ROI — the Gatherer layer alone starts saving time in month 2.</p>
+      </div>
+    </div>
+
+    <div class="qa">
+      <div class="qa-q">What team do you need? What's the resource ask?</div>
+      <div class="qa-a">
+        <strong>Answer:</strong> Lean team, high leverage:
+        <ul>
+          <li><strong>2-3 engineers</strong> for platform development (we've built the current system with a small team already)</li>
+          <li><strong>1 PM/domain expert</strong> to define skill content and validate outputs</li>
+          <li><strong>Part-time infra support</strong> for deployment and security review</li>
+        </ul>
+        <p style="margin-top:8px">The architecture is designed for skill extensibility — adding new processing agents or consumer personas is a configuration exercise, not a development project. One engineer can add a new skill in a day.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Competitive & Strategic -->
+  <div class="category">
+    <h2>🎯 Strategic & Competitive</h2>
+    <p class="cat-desc">Why now? Why us? What's the moat?</p>
+
+    <div class="qa">
+      <div class="qa-q">Why build this ourselves? Can't we just buy a tool?</div>
+      <div class="qa-a">
+        <strong>Answer:</strong> No off-the-shelf tool has:
+        <ul>
+          <li><strong>Capillary domain knowledge:</strong> Our agent knows Loyalty+, Engage+, Neo, Connect+ — what's OOTB, what needs config, what needs custom dev. No generic tool has this.</li>
+          <li><strong>Our data access:</strong> It searches our Jira, our Confluence, our product docs. A generic tool can't do this without massive integration work anyway.</li>
+          <li><strong>Our process knowledge:</strong> The BRD pipeline, guardrail system, gate methodology — this is our IP, encoded as agent skills.</li>
+        </ul>
+        <p style="margin-top:8px">Generic AI tools (Copilot, ChatGPT Enterprise) are horizontal. We need a <strong>vertical solution</strong> that understands Capillary's products, processes, and clients. That's what we're building.</p>
+      </div>
+    </div>
+
+    <div class="qa">
+      <div class="qa-q">What if AI models get cheaper/better? Does this become obsolete?</div>
+      <div class="qa-a">
+        <strong>Answer:</strong> Models getting better is <strong>tailwind, not headwind</strong>. Our architecture is model-agnostic — we can swap Claude for GPT-5 or Gemini or open-source models without changing the platform. The value isn't in the model — it's in:
+        <ul>
+          <li>The <strong>Impact Dependency Graph</strong> (our IP)</li>
+          <li>The <strong>skill library</strong> (our domain knowledge encoded)</li>
+          <li>The <strong>data connections</strong> (Jira, Confluence, codebase)</li>
+          <li>The <strong>process automation</strong> (BRD pipeline, gates, guardrails)</li>
+        </ul>
+        <p style="margin-top:8px">Better models = our platform gets smarter automatically. We ride the wave, we don't fight it.</p>
+      </div>
+    </div>
+
+    <div class="qa">
+      <div class="qa-q">What's the competitive advantage for Capillary? Can this be client-facing?</div>
+      <div class="qa-a">
+        <strong>Answer:</strong> Two angles:
+        <ul>
+          <li><strong>Internal moat:</strong> Faster delivery, better client experience, proactive issue detection. Clients see faster turnaround and more proactive communication — without knowing AI is behind it.</li>
+          <li><strong>Future product opportunity:</strong> The Consumer Agent layer could eventually become a client-facing product — imagine clients having their own "Capillary Assistant" that answers questions about their integration, suggests optimizations, and surfaces insights from their data.</li>
+        </ul>
+        <div class="warn">Don't promise client-facing product in this pitch. Keep it as "future possibility" — the immediate ask is internal efficiency.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Adoption & Change Management -->
+  <div class="category">
+    <h2>👥 Adoption & Change Management</h2>
+    <p class="cat-desc">Will people actually use this?</p>
+
+    <div class="qa">
+      <div class="qa-q">How do we get the team to actually adopt this?</div>
+      <div class="qa-a">
+        <strong>Answer:</strong> The current agent is already in daily use by the PS team — adoption isn't theoretical, it's proven. The key design principles:
+        <ul>
+          <li><strong>Zero friction:</strong> Ask a question in natural language, get an answer. No training needed.</li>
+          <li><strong>Meets them where they are:</strong> Nudges via Slack and email — no new dashboard to check.</li>
+          <li><strong>Immediate value:</strong> First use saves 30+ minutes. People come back because it works.</li>
+          <li><strong>Doesn't replace workflow:</strong> Augments existing tools (Jira, Confluence) rather than replacing them.</li>
+        </ul>
+        <div class="tip">Show usage stats from the current agent if available. Real adoption numbers are the strongest argument.</div>
+      </div>
+    </div>
+
+    <div class="qa">
+      <div class="qa-q">What if the quality isn't good enough and people stop trusting it?</div>
+      <div class="qa-a">
+        <strong>Answer:</strong> Quality is enforced architecturally, not hoped for:
+        <ul>
+          <li><strong>Validation node:</strong> Every output is checked before delivery</li>
+          <li><strong>Guardrail system:</strong> BRDs must pass G1-G6 checks, all sections scored ≥ 3/5</li>
+          <li><strong>Feedback loop:</strong> When users reject or correct outputs, the system learns (skill updates, prompt refinements)</li>
+          <li><strong>Observability:</strong> We monitor response quality metrics and can catch degradation early</li>
+        </ul>
+        <p style="margin-top:8px">The gate system means bad outputs literally cannot proceed to the next stage. Quality is a hard constraint, not a soft goal.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tough Questions -->
+  <div class="category">
+    <h2>🔥 Tough Questions (Be Ready)</h2>
+    <p class="cat-desc">The hardball questions that could derail the pitch</p>
+
+    <div class="qa">
+      <div class="qa-q">We've seen AI demos before that don't work in practice. Why is this different?</div>
+      <div class="qa-a">
+        <strong>Answer:</strong> Because this isn't a demo — it's <strong>running in production today</strong>. The team uses it daily for real client work. We're not asking you to fund a research project — we're asking you to fund the scaling of something that already works.
+        <p style="margin-top:8px">The difference between this and typical AI demos: we search real data (not generate from training), we have guardrails (not open-ended generation), and we have human approval gates (not autonomous action).</p>
+        <div class="tip">This is your strongest card. Do the demo LIVE with a real client scenario, not a prepared example.</div>
+      </div>
+    </div>
+
+    <div class="qa">
+      <div class="qa-q">What are the risks? What could go wrong?</div>
+      <div class="qa-a">
+        <strong>Answer:</strong> Being transparent about risks builds trust:
+        <ul>
+          <li><strong>AI model dependency:</strong> Mitigated by model-agnostic architecture. We can switch providers.</li>
+          <li><strong>Data quality:</strong> Garbage in = garbage out. If Jira/Confluence data is messy, agent outputs will reflect that. This actually incentivizes better data hygiene.</li>
+          <li><strong>Scope creep:</strong> Mitigated by phased delivery. Each phase is independently valuable.</li>
+          <li><strong>Adoption resistance:</strong> Mitigated by proven adoption of current agent + zero-friction design.</li>
+        </ul>
+        <p style="margin-top:8px">The biggest risk is <strong>not doing this</strong> — competitors are building similar capabilities. The PS team that can deliver 3x faster with better quality wins the market.</p>
+      </div>
+    </div>
+
+    <div class="qa">
+      <div class="qa-q">Can you show me this working right now? Not slides — the actual thing.</div>
+      <div class="qa-a">
+        <strong>Answer:</strong> Yes. <em>(Open the app and demo live.)</em>
+        <p style="margin-top:8px"><strong>Suggested demo flow:</strong></p>
+        <ul>
+          <li>1. Paste a real Jira ticket ID → show structured assessment in 30-60 seconds</li>
+          <li>2. Ask "Generate a gap analysis for [client]" → show parallel research + document generation</li>
+          <li>3. Ask something off-topic → show the gate blocking it (cost savings)</li>
+          <li>4. Show the plan feature for a complex multi-step request</li>
+          <li>5. Show the BRD pipeline: "Create a BRD for a retail loyalty program" → show question flow</li>
+        </ul>
+        <div class="tip">Have 2-3 real Jira tickets ready that produce impressive results. Test them before the demo. Avoid tickets with sparse data.</div>
+      </div>
+    </div>
+
+    <div class="qa">
+      <div class="qa-q">What's the ask? What exactly do you need from us?</div>
+      <div class="qa-a">
+        <strong>Answer:</strong> Clear, specific ask:
+        <ul>
+          <li><strong>Team:</strong> 2-3 dedicated engineers + 1 PM for 6-9 months</li>
+          <li><strong>Infrastructure budget:</strong> ~$2-3K/month for AI API costs + cloud infrastructure (scales with usage)</li>
+          <li><strong>Executive sponsorship:</strong> Cross-team access to data sources (Jira, Confluence, CRM) and stakeholder buy-in for the Consumer Agent personas</li>
+          <li><strong>Phased commitment:</strong> Fund Phase 1-2 (3 months). Review results. Then decide on Phase 3-6.</li>
+        </ul>
+        <p style="margin-top:8px">We're not asking for a blank check. Fund the first phase, measure the results, then decide. The architecture supports incremental investment.</p>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<footer class="footer">Internal prep document — Capillary Technologies · Professional Services Engineering</footer>
+
+<script>
+function toggleTheme(){const d=document.documentElement.getAttribute('data-theme')==='dark';if(d){document.documentElement.removeAttribute('data-theme');localStorage.setItem('theme','light');document.getElementById('themeToggle').textContent='🌙'}else{document.documentElement.setAttribute('data-theme','dark');localStorage.setItem('theme','dark');document.getElementById('themeToggle').textContent='☀️'}}
+(function(){if(localStorage.getItem('theme')==='dark')document.getElementById('themeToggle').textContent='☀️'})();
+</script>
+</body>
+</html>
