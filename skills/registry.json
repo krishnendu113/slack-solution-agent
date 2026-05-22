@@ -8,6 +8,18 @@
       "triggers": ["cr", "change request", "feasibility", "brd", "requirement"]
     },
     {
+      "id": "pm-pipeline",
+      "folder": "brd",
+      "description": "PM Pipeline — Full 3-phase delivery: BRD Creation (question sets A-F, 21 sections, guardrails G1-G6) → Discovery Dashboard (prefilled, 100% gate) → Jira Ticket Generation. Also supports BRD evaluation/scoring of existing documents.",
+      "triggers": [
+        "create brd", "brd", "run discovery", "generate jira", "pm pipeline",
+        "psv project", "update confluence", "generate tickets from brd",
+        "evaluate brd", "score brd", "review signed brd", "benchmark brd",
+        "engage+", "loyalty+", "rewards+", "campaign manager", "cdp", "neo",
+        "business requirements document", "project kickoff", "discovery dashboard"
+      ]
+    },
+    {
       "id": "capillary-sdd-writer",
       "folder": "capillary-sdd-writer",
       "description": "Generate a developer-ready Capillary SDD from a Jira epic ID or BRD text. Produces Full SDD for new integrations or Lite SDD for CRs.",
