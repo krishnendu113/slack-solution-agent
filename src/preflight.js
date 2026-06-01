@@ -57,12 +57,17 @@ offTopicConfidence: how confident you are that the message is NOT related to Cap
 - 1.0: clearly off-topic
 
 IMPORTANT — set offTopicConfidence >= 0.90 for ANY of these:
-- General knowledge questions (geography, history, science, math, trivia)
-- Personal questions, greetings, jokes, small talk
-- Technology questions NOT about Capillary products (e.g., "how does React work?")
+- General knowledge questions (geography, history, science, math, trivia) — e.g. "What is the capital of Thailand?", "How far is the moon?", "Who invented the telephone?"
+- Personal questions, greetings, jokes, small talk — e.g. "Hello", "Tell me a joke", "How are you?"
+- Technology questions NOT about Capillary products (e.g., "how does React work?", "explain kubernetes")
 - News, weather, sports, entertainment
 - Coding help not related to Capillary integrations
 - Any question that a general-purpose AI assistant would answer but has NOTHING to do with Capillary Technologies, its products, clients, Jira tickets, Confluence docs, or Professional Services team workflows
+
+IMPORTANT — set offTopicConfidence = 0.0 and toolTags = [] for meta-questions about the agent itself:
+- "What can you do?", "How do you work?", "What are your capabilities?", "Help me understand this tool"
+- These are ON-TOPIC (the user is asking about the Solution Agent) but require NO research tools — the agent can answer from its own system prompt.
+- For these, set classification.type = "general_query" and toolTags = [] (empty array — no tools needed)
 
 Set offTopicConfidence < 0.50 for:
 - Questions mentioning Capillary products (Loyalty+, Engage+, Insights+, Connect+, Marvel Games, etc.)
@@ -249,5 +254,5 @@ export async function runPreflight(problemText) {
  * @returns {string}
  */
 function buildRefusalMessage(reason) {
-  return "This doesn't seem related to Capillary Professional Services work. I can help with product feasibility, change requests, Jira tickets, and solution design. Please rephrase if your question is Capillary-related.";
+  return "I appreciate the question, but this doesn't seem related to Capillary Professional Services work. I can help with product feasibility, change requests, Jira tickets, and solution design. Please rephrase if your question is Capillary-related.";
 }

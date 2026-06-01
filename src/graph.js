@@ -986,7 +986,15 @@ Return plain text only.`;
   graph.addEdge('loadSkills', 'skillRouter');
 
   graph.addConditionalEdges('skillRouter', (state) => {
-    return state.executionMode === 'multi-node' ? 'researchFanOut' : 'parallelResearch';
+    if (state.executionMode === 'multi-node') return 'researchFanOut';
+    // Skip parallel research if no tool tags require it (meta-questions, simple queries)
+    const researchDomains = ['jira', 'confluence', 'kapa_docs', 'web_search'];
+    const hasResearchTags = (state.toolTags || []).some(t => researchDomains.includes(t));
+    if (!hasResearchTags) {
+      console.log(`[graph:routing] No research tags — skipping parallel research, going direct to synthesise`);
+      return 'synthesise';
+    }
+    return 'parallelResearch';
   });
 
   // Parallel research: parallelResearch → synthesise (success) or research (fallback)
