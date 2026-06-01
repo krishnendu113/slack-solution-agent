@@ -3,495 +3,296 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Capillary 360 — Autonomous Intelligence Platform</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%230066cc'/><text x='16' y='22' font-family='system-ui,sans-serif' font-size='14' font-weight='700' fill='white' text-anchor='middle'>360</text></svg>">
+  <title>How the TAM Agent Works — Capillary Solution Agent</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%230066cc'/><text x='16' y='22' font-family='system-ui,sans-serif' font-size='16' font-weight='700' fill='white' text-anchor='middle'>SA</text></svg>">
   <script>(function(){ var t=localStorage.getItem('theme'); if(t==='dark') document.documentElement.setAttribute('data-theme','dark'); })();</script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    :root {
-      --bg: #ffffff; --bg-secondary: #f7f7f8; --bg-card: #ffffff;
-      --text-primary: #1a1a1a; --text-secondary: #4b5563; --text-muted: #6b7280;
-      --border: #e5e7eb; --accent: #0066cc; --accent-light: #e0f0ff;
-      --green: #16a34a; --green-bg: #f0fdf4; --green-border: #bbf7d0;
-      --amber: #d97706; --amber-bg: #fffbeb; --amber-border: #fde68a;
-      --blue: #2563eb; --blue-bg: #eff6ff; --blue-border: #bfdbfe;
-      --purple: #7c3aed; --purple-bg: #f5f3ff; --purple-border: #ddd6fe;
-      --teal: #0d9488; --teal-bg: #f0fdfa; --teal-border: #99f6e4;
-      --red: #dc2626; --red-bg: #fef2f2; --red-border: #fecaca;
-      --orange: #ea580c; --orange-bg: #fff7ed; --orange-border: #fed7aa;
-      --nav-bg: rgba(255,255,255,0.85); --nav-border: #e5e7eb;
-      --shadow: 0 1px 3px rgba(0,0,0,0.06); --shadow-lg: 0 4px 16px rgba(0,0,0,0.08);
-      --connector: #cbd5e1;
-      --gradient-start: #0066cc; --gradient-end: #7c3aed;
-    }
-    [data-theme="dark"] {
-      --bg: #0f172a; --bg-secondary: #1e293b; --bg-card: #1e293b;
-      --text-primary: #f1f5f9; --text-secondary: #94a3b8; --text-muted: #64748b;
-      --border: #334155; --accent: #3b82f6; --accent-light: #1e3a5f;
-      --green: #34d399; --green-bg: #064e3b; --green-border: #065f46;
-      --amber: #fbbf24; --amber-bg: #78350f; --amber-border: #92400e;
-      --blue: #60a5fa; --blue-bg: #1e3a5f; --blue-border: #1e40af;
-      --purple: #a78bfa; --purple-bg: #2e1065; --purple-border: #3b0764;
-      --teal: #2dd4bf; --teal-bg: #134e4a; --teal-border: #115e59;
-      --red: #f87171; --red-bg: #450a0a; --red-border: #7f1d1d;
-      --orange: #fb923c; --orange-bg: #431407; --orange-border: #7c2d12;
-      --nav-bg: rgba(15,23,42,0.9); --nav-border: #334155;
-      --shadow: 0 1px 3px rgba(0,0,0,0.3); --shadow-lg: 0 4px 16px rgba(0,0,0,0.4);
-      --connector: #475569; --gradient-start: #3b82f6; --gradient-end: #a78bfa;
-    }
-    html { scroll-behavior: smooth; scroll-padding-top: 72px; }
-    body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--text-primary); line-height: 1.6; -webkit-font-smoothing: antialiased; }
-    .nav { position: fixed; top: 0; left: 0; right: 0; height: 56px; background: var(--nav-bg); backdrop-filter: blur(12px); border-bottom: 1px solid var(--nav-border); display: flex; align-items: center; justify-content: space-between; padding: 0 24px; z-index: 100; }
-    .nav-title { font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 10px; }
-    .nav-logo { width: 28px; height: 28px; border-radius: 6px; background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end)); display: flex; align-items: center; justify-content: center; color: white; font-size: 10px; font-weight: 700; }
-    .nav-right { display: flex; align-items: center; gap: 12px; }
-    .nav-back { font-size: 13px; color: var(--text-muted); text-decoration: none; cursor: pointer; }
-    .nav-back:hover { color: var(--accent); }
-    .theme-toggle { background: none; border: 1px solid var(--border); border-radius: 8px; padding: 5px 10px; cursor: pointer; font-size: 15px; color: var(--text-secondary); line-height: 1; }
-    .theme-toggle:hover { background: var(--bg-secondary); }
-    .page { max-width: 900px; margin: 0 auto; padding: 80px 24px 64px; }
-    section { margin-bottom: 64px; }
-    .hero { text-align: center; padding: 56px 0 48px; }
-    .hero h1 { font-size: 42px; font-weight: 800; letter-spacing: -0.03em; line-height: 1.1; margin-bottom: 16px; background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
-    .hero .subtitle { font-size: 18px; color: var(--text-secondary); max-width: 600px; margin: 0 auto 12px; }
-    .hero .tagline { font-size: 14px; color: var(--text-muted); max-width: 500px; margin: 0 auto 28px; font-style: italic; }
-    .badges { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
-    .badge { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 500; padding: 4px 12px; border-radius: 20px; border: 1px solid; }
-    .badge.green { color: var(--green); background: var(--green-bg); border-color: var(--green-border); }
-    .badge.blue { color: var(--blue); background: var(--blue-bg); border-color: var(--blue-border); }
-    .badge.purple { color: var(--purple); background: var(--purple-bg); border-color: var(--purple-border); }
-    .badge.amber { color: var(--amber); background: var(--amber-bg); border-color: var(--amber-border); }
-    .badge.teal { color: var(--teal); background: var(--teal-bg); border-color: var(--teal-border); }
-    .badge.orange { color: var(--orange); background: var(--orange-bg); border-color: var(--orange-border); }
-    h2 { font-size: 24px; font-weight: 700; margin-bottom: 6px; letter-spacing: -0.01em; }
-    h2 + .section-desc { font-size: 15px; color: var(--text-muted); margin-bottom: 24px; }
-    h3 { font-size: 15px; font-weight: 600; margin-bottom: 8px; }
-    p { color: var(--text-secondary); margin-bottom: 12px; }
-    p:last-child { margin-bottom: 0; }
-    .divider { border: none; border-top: 1px solid var(--border); margin: 0 0 64px; }
-    .exec-summary { background: linear-gradient(135deg, var(--blue-bg), var(--purple-bg)); border: 1px solid var(--blue-border); border-radius: 16px; padding: 32px; margin-bottom: 48px; }
-    .exec-summary h3 { font-size: 16px; margin-bottom: 12px; color: var(--text-primary); }
-    .exec-summary p { font-size: 15px; line-height: 1.7; }
-    .exec-summary .hl { font-weight: 600; color: var(--accent); }
-    .stat-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 24px; }
-    .stat-card { text-align: center; padding: 20px 12px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); }
-    .stat-card .num { font-size: 28px; font-weight: 800; color: var(--accent); }
-    .stat-card .lbl { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
-    .layer-header { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; }
-    .layer-icon { width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
-    .layer-icon.g { background: var(--blue-bg); border: 2px solid var(--blue-border); }
-    .layer-icon.p { background: var(--purple-bg); border: 2px solid var(--purple-border); }
-    .layer-icon.c { background: var(--green-bg); border: 2px solid var(--green-border); }
-    .layer-icon.r { background: var(--orange-bg); border: 2px solid var(--orange-border); }
-    .layer-header h3 { font-size: 18px; font-weight: 700; margin-bottom: 2px; }
-    .layer-header p { font-size: 13px; color: var(--text-muted); margin: 0; }
-    .lc { padding-left: 58px; }
-    .card-grid { display: grid; gap: 12px; }
-    .card-grid.c2 { grid-template-columns: 1fr 1fr; }
-    .card-grid.c3 { grid-template-columns: 1fr 1fr 1fr; }
-    .card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 20px; box-shadow: var(--shadow); }
-    .card:hover { box-shadow: var(--shadow-lg); transform: translateY(-1px); }
-    .card h3 { display: flex; align-items: center; gap: 8px; }
-    .card p { font-size: 14px; }
-    .opt-list { display: flex; flex-direction: column; gap: 10px; }
-    .opt-item { display: flex; gap: 12px; align-items: flex-start; padding: 14px 16px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 8px; font-size: 13px; }
-    .opt-icon { font-size: 18px; flex-shrink: 0; }
-    .opt-item strong { color: var(--text-primary); }
-    .opt-item span { color: var(--text-secondary); }
-    .arch-diagram { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 16px; padding: 32px; margin: 24px 0; }
-    .arch-layer { display: flex; align-items: center; gap: 12px; padding: 16px; margin-bottom: 12px; border-radius: 10px; border: 2px solid; }
-    .arch-layer:last-child { margin-bottom: 0; }
-    .arch-layer.lg { border-color: var(--blue-border); background: var(--blue-bg); }
-    .arch-layer.lp { border-color: var(--purple-border); background: var(--purple-bg); }
-    .arch-layer.lc2 { border-color: var(--green-border); background: var(--green-bg); }
-    .arch-layer.lr { border-color: var(--orange-border); background: var(--orange-bg); }
-    .arch-lbl { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; min-width: 100px; flex-shrink: 0; }
-    .arch-layer.lg .arch-lbl { color: var(--blue); }
-    .arch-layer.lp .arch-lbl { color: var(--purple); }
-    .arch-layer.lc2 .arch-lbl { color: var(--green); }
-    .arch-layer.lr .arch-lbl { color: var(--orange); }
-    .arch-nodes { display: flex; gap: 8px; flex-wrap: wrap; }
-    .arch-node { padding: 6px 12px; border-radius: 6px; font-size: 12px; font-weight: 500; background: var(--bg-card); border: 1px solid var(--border); white-space: nowrap; }
-    .arch-conn { text-align: center; font-size: 18px; color: var(--connector); margin: 4px 0; letter-spacing: 4px; }
-    .impact-ex { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-top: 16px; }
-    .impact-ex h4 { font-size: 13px; font-weight: 600; margin-bottom: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
-    .impact-flow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
-    .impact-flow:last-child { margin-bottom: 0; }
-    .inode { padding: 8px 14px; border-radius: 8px; font-size: 12px; font-weight: 600; }
-    .inode.t { background: var(--blue-bg); border: 1px solid var(--blue-border); color: var(--blue); }
-    .inode.d { background: var(--purple-bg); border: 1px solid var(--purple-border); color: var(--purple); }
-    .inode.cn { background: var(--green-bg); border: 1px solid var(--green-border); color: var(--green); }
-    .iarr { color: var(--connector); font-size: 16px; }
-    .pipeline { display: flex; align-items: center; gap: 0; flex-wrap: wrap; margin: 16px 0; padding: 16px; background: var(--bg-secondary); border-radius: 10px; border: 1px solid var(--border); }
-    .pipeline-lbl { width: 100%; font-size: 11px; font-weight: 600; color: var(--text-muted); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.05em; }
-    .ps { padding: 8px 14px; border-radius: 6px; font-size: 12px; font-weight: 600; background: var(--bg-card); border: 1px solid var(--border); white-space: nowrap; }
-    .ps.h { border-color: var(--amber-border); background: var(--amber-bg); color: var(--amber); }
-    .pa { color: var(--connector); margin: 0 6px; font-size: 14px; }
-    .gg { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-    .gi { padding: 16px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg-card); }
-    .gi .ic { font-size: 20px; margin-bottom: 8px; }
-    .gi h4 { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
-    .gi p { font-size: 12px; color: var(--text-muted); margin: 0; }
-    .roi-table { width: 100%; border-collapse: collapse; font-size: 14px; margin-top: 16px; }
-    .roi-table th, .roi-table td { text-align: left; padding: 12px 16px; border-bottom: 1px solid var(--border); }
-    .roi-table th { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); background: var(--bg-secondary); }
-    .roi-table .old { color: var(--red); font-weight: 600; }
-    .roi-table .new { color: var(--green); font-weight: 600; }
-    .roadmap-list { display: flex; flex-direction: column; gap: 10px; }
-    .roadmap-item { display: flex; gap: 14px; align-items: flex-start; padding: 16px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow); }
-    .roadmap-num { font-size: 11px; font-weight: 700; color: var(--accent); background: var(--accent-light); border-radius: 6px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-    .roadmap-item h3 { margin-bottom: 4px; }
-    .roadmap-item p { font-size: 13px; margin: 0; }
-    .footer { text-align: center; padding: 32px 0; border-top: 1px solid var(--border); font-size: 13px; color: var(--text-muted); }
-    @media (max-width: 640px) {
-      .hero h1 { font-size: 32px; }
-      .card-grid.c2, .card-grid.c3 { grid-template-columns: 1fr; }
-      .stat-row { grid-template-columns: 1fr 1fr; }
-      .gg { grid-template-columns: 1fr; }
-      .page { padding: 72px 16px 48px; }
-      .lc { padding-left: 0; }
-    }
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{--bg:#fff;--bg2:#f7f7f8;--bgc:#fff;--tp:#1a1a1a;--ts:#4b5563;--tm:#6b7280;--bd:#e5e7eb;--ac:#0066cc;--acl:#e0f0ff;--gn:#16a34a;--gnb:#f0fdf4;--gnbd:#bbf7d0;--am:#d97706;--amb:#fffbeb;--ambd:#fde68a;--bl:#2563eb;--blb:#eff6ff;--blbd:#bfdbfe;--pr:#7c3aed;--prb:#f5f3ff;--prbd:#ddd6fe;--tl:#0d9488;--tlb:#f0fdfa;--tlbd:#99f6e4;--rd:#dc2626;--rdb:#fef2f2;--rdbd:#fecaca;--or:#ea580c;--orb:#fff7ed;--orbd:#fed7aa;--navbg:rgba(255,255,255,0.85);--navbd:#e5e7eb;--sh:0 1px 3px rgba(0,0,0,0.06);--shl:0 4px 16px rgba(0,0,0,0.08);--cn:#cbd5e1}
+    [data-theme="dark"]{--bg:#0f172a;--bg2:#1e293b;--bgc:#1e293b;--tp:#f1f5f9;--ts:#94a3b8;--tm:#64748b;--bd:#334155;--ac:#3b82f6;--acl:#1e3a5f;--gn:#34d399;--gnb:#064e3b;--gnbd:#065f46;--am:#fbbf24;--amb:#78350f;--ambd:#92400e;--bl:#60a5fa;--blb:#1e3a5f;--blbd:#1e40af;--pr:#a78bfa;--prb:#2e1065;--prbd:#3b0764;--tl:#2dd4bf;--tlb:#134e4a;--tlbd:#115e59;--rd:#f87171;--rdb:#450a0a;--rdbd:#7f1d1d;--or:#fb923c;--orb:#431407;--orbd:#7c2d12;--navbg:rgba(15,23,42,0.9);--navbd:#334155;--sh:0 1px 3px rgba(0,0,0,0.3);--shl:0 4px 16px rgba(0,0,0,0.4);--cn:#475569}
+    html{scroll-behavior:smooth;scroll-padding-top:72px}
+    body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--tp);line-height:1.6;-webkit-font-smoothing:antialiased}
+    .nav{position:fixed;top:0;left:0;right:0;height:56px;background:var(--navbg);backdrop-filter:blur(12px);border-bottom:1px solid var(--navbd);display:flex;align-items:center;justify-content:space-between;padding:0 24px;z-index:100}
+    .nav-title{font-size:15px;font-weight:600;display:flex;align-items:center;gap:10px}
+    .nav-logo{width:28px;height:28px;border-radius:6px;background:var(--ac);display:flex;align-items:center;justify-content:center;color:white;font-size:12px;font-weight:700}
+    .nav-right{display:flex;align-items:center;gap:12px}
+    .nav-link{font-size:13px;color:var(--tm);text-decoration:none;cursor:pointer}
+    .nav-link:hover{color:var(--ac)}
+    .theme-toggle{background:none;border:1px solid var(--bd);border-radius:8px;padding:5px 10px;cursor:pointer;font-size:15px;color:var(--ts);line-height:1}
+    .theme-toggle:hover{background:var(--bg2)}
+    .page{max-width:860px;margin:0 auto;padding:80px 24px 64px}
+    section{margin-bottom:56px}
+    .hero{text-align:center;padding:48px 0 40px}
+    .hero h1{font-size:36px;font-weight:700;letter-spacing:-0.02em;line-height:1.2;margin-bottom:12px}
+    .hero .sub{font-size:17px;color:var(--ts);max-width:560px;margin:0 auto 24px}
+    .badges{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+    .badge{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:500;padding:4px 12px;border-radius:20px;border:1px solid}
+    .badge.gn{color:var(--gn);background:var(--gnb);border-color:var(--gnbd)}
+    .badge.bl{color:var(--bl);background:var(--blb);border-color:var(--blbd)}
+    .badge.pr{color:var(--pr);background:var(--prb);border-color:var(--prbd)}
+    .badge.am{color:var(--am);background:var(--amb);border-color:var(--ambd)}
+    .badge.tl{color:var(--tl);background:var(--tlb);border-color:var(--tlbd)}
+    h2{font-size:22px;font-weight:700;margin-bottom:6px}
+    h2+.sd{font-size:14px;color:var(--tm);margin-bottom:20px}
+    h3{font-size:15px;font-weight:600;margin-bottom:8px}
+    p{color:var(--ts);margin-bottom:12px}
+    p:last-child{margin-bottom:0}
+    .divider{border:none;border-top:1px solid var(--bd);margin:0 0 56px}
+    .cg{display:grid;gap:12px}
+    .cg.c2{grid-template-columns:1fr 1fr}
+    .cd{background:var(--bgc);border:1px solid var(--bd);border-radius:10px;padding:20px;box-shadow:var(--sh)}
+    .cd:hover{box-shadow:var(--shl);transform:translateY(-1px)}
+    .cd h3{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+    .cd p{font-size:14px}
+    .ol{display:flex;flex-direction:column;gap:10px}
+    .oi{display:flex;gap:12px;align-items:flex-start;padding:14px 16px;background:var(--bg2);border:1px solid var(--bd);border-radius:8px;font-size:13px}
+    .oi-i{font-size:18px;flex-shrink:0}
+    .oi strong{color:var(--tp)}
+    .oi span{color:var(--ts)}
+    .fl{list-style:none;display:flex;flex-direction:column;gap:10px}
+    .fl li{display:flex;gap:10px;align-items:baseline;font-size:14px;color:var(--ts);line-height:1.6}
+    .fl li::before{content:'→';color:var(--ac);font-weight:600;flex-shrink:0}
+    .tt{width:100%;border-collapse:collapse;font-size:14px}
+    .tt th,.tt td{text-align:left;padding:10px 14px;border-bottom:1px solid var(--bd)}
+    .tt th{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--tm);background:var(--bg2)}
+    code{font-size:12px;background:var(--bg2);padding:2px 6px;border-radius:4px;color:var(--ac);font-family:'SF Mono',monospace}
+    .dia{margin:24px 0;overflow-x:auto}
+    .dr{display:flex;align-items:center;gap:0;margin-bottom:12px}
+    .dn{padding:10px 16px;border-radius:8px;font-size:13px;font-weight:600;border:2px solid var(--bd);background:var(--bgc);white-space:nowrap;text-align:center;box-shadow:var(--sh)}
+    .dn small{display:block;font-size:10px;font-weight:400;color:var(--tm);margin-top:2px}
+    .dn.bl{border-color:var(--blbd);background:var(--blb);color:var(--bl)}
+    .dn.pr{border-color:var(--prbd);background:var(--prb);color:var(--pr)}
+    .dn.gn{border-color:var(--gnbd);background:var(--gnb);color:var(--gn)}
+    .dn.am{border-color:var(--ambd);background:var(--amb);color:var(--am)}
+    .dn.tl{border-color:var(--tlbd);background:var(--tlb);color:var(--tl)}
+    .da{color:var(--cn);font-size:18px;margin:0 6px;flex-shrink:0}
+    .db{display:flex;flex-direction:column;gap:8px;margin-left:12px;padding-left:16px;border-left:2px solid var(--cn)}
+    .dl{font-size:11px;font-weight:600;color:var(--tm);padding:2px 8px;border-radius:4px;background:var(--bg2);margin-right:8px;white-space:nowrap}
+    .ml{display:flex;flex-direction:column;gap:8px}
+    .mr{display:flex;align-items:center;gap:12px;padding:12px 16px;background:var(--bg2);border:1px solid var(--bd);border-radius:8px;font-size:13px}
+    .mr .mn{font-weight:600;min-width:80px;flex-shrink:0}
+    .mr .mt{color:var(--ts);flex:1}
+    .fb{background:linear-gradient(135deg,var(--prb),var(--tlb));border:1px solid var(--prbd);border-radius:16px;padding:28px;margin-top:16px}
+    .fb h3{font-size:16px;margin-bottom:10px;color:var(--tp)}
+    .fb p{font-size:14px;line-height:1.7}
+    .fb .hl{font-weight:600;color:var(--pr)}
+    .rl{display:flex;flex-direction:column;gap:10px}
+    .ri{display:flex;gap:14px;align-items:flex-start;padding:16px;background:var(--bgc);border:1px solid var(--bd);border-radius:10px;box-shadow:var(--sh)}
+    .rn{font-size:11px;font-weight:700;color:var(--ac);background:var(--acl);border-radius:6px;width:28px;height:28px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+    .ri h3{margin-bottom:4px}
+    .ri p{font-size:13px;margin:0}
+    .footer{text-align:center;padding:32px 0;border-top:1px solid var(--bd);font-size:13px;color:var(--tm)}
+    @media(max-width:640px){.hero h1{font-size:28px}.cg.c2{grid-template-columns:1fr}.page{padding:72px 16px 48px}.dr{flex-wrap:wrap;gap:4px}.dn{font-size:12px;padding:8px 12px}}
   </style>
 </head>
 <body>
 <nav class="nav">
-  <div class="nav-title"><div class="nav-logo">360</div> Capillary 360</div>
+  <div class="nav-title"><div class="nav-logo">SA</div> Solution Agent</div>
   <div class="nav-right">
-    <a class="nav-back" href="/agent.html" style="margin-right:4px">How the Agent Works</a>
-    <a class="nav-back" onclick="goBack()" role="button" tabindex="0">← Back</a>
+    <a class="nav-link" href="/agent360.html">Capillary 360 Vision →</a>
+    <a class="nav-link" href="/">← App</a>
     <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Toggle dark/light mode">🌙</button>
   </div>
 </nav>
 <div class="page">
 
   <section class="hero">
-    <h1>Capillary 360</h1>
-    <p class="subtitle">An always-on autonomous intelligence platform that continuously processes client signals, maintains living documents, and empowers every team with persona-aware AI agents.</p>
-    <p class="tagline">"Your AI workforce never sleeps — it gathers, processes, and serves intelligence 24/7."</p>
+    <h1>How the TAM Agent Works</h1>
+    <p class="sub">An AI assistant that helps Professional Services evaluate client requests, generate documents, and find solutions — by searching real data, not guessing.</p>
     <div class="badges">
-      <span class="badge green">● 24/7 Autonomous</span>
-      <span class="badge blue">3-Layer Architecture</span>
-      <span class="badge purple">Human-in-the-Loop</span>
-      <span class="badge amber">Impact Dependency Graph</span>
-      <span class="badge teal">Persona-Aware</span>
-      <span class="badge orange">Resource Intelligence</span>
-    </div>
-  </section>
-
-  <div class="exec-summary">
-    <h3>💡 The Problem We Solve</h3>
-    <p>Today, Professional Services teams spend <span class="hl">60-70% of their time</span> manually gathering information across Jira, Confluence, emails, and meetings — then manually updating documents that go stale within days. Client sentiment goes unnoticed until escalation. Resource allocation is reactive, not proactive.</p>
-    <p style="margin-top:12px"><strong>Capillary 360</strong> flips this model: autonomous agents work 24/7 gathering signals, processing changes through an <span class="hl">Impact Dependency Graph</span>, and keeping every derived document — BRDs, SDDs, Sentiment Reports, Gap Analyses — perpetually current. Human teams receive <span class="hl">intelligent nudges via email or Slack</span> and approve or override with a single click.</p>
-  </div>
-
-  <div class="stat-row">
-    <div class="stat-card"><div class="num">24/7</div><div class="lbl">Always-on gathering</div></div>
-    <div class="stat-card"><div class="num">90%</div><div class="lbl">Less manual doc updates</div></div>
-    <div class="stat-card"><div class="num">15 min</div><div class="lbl">vs. 3 days for BRD</div></div>
-    <div class="stat-card"><div class="num">3x</div><div class="lbl">More projects per SA</div></div>
-  </div>
-
-  <hr class="divider" style="margin-top:56px">
-
-  <!-- Architecture Overview -->
-  <section>
-    <h2>Platform Architecture</h2>
-    <p class="section-desc">Three autonomous layers working in concert — each layer feeds the next, with human guardrails at every decision point.</p>
-    <div class="arch-diagram">
-      <div class="arch-layer lg">
-        <div class="arch-lbl">Gatherer<br>Layer</div>
-        <div class="arch-nodes">
-          <div class="arch-node">Email Agent</div>
-          <div class="arch-node">Jira Watcher</div>
-          <div class="arch-node">Confluence Listener</div>
-          <div class="arch-node">Meeting Transcriber</div>
-          <div class="arch-node">CRM Sync</div>
-          <div class="arch-node">Slack Monitor</div>
-        </div>
-      </div>
-      <div class="arch-conn">↓ ↓ ↓ signals + indexed data ↓ ↓ ↓</div>
-      <div class="arch-layer lp">
-        <div class="arch-lbl">Processor<br>Layer</div>
-        <div class="arch-nodes">
-          <div class="arch-node">Impact Graph Manager</div>
-          <div class="arch-node">BRD Agent</div>
-          <div class="arch-node">SDD Agent</div>
-          <div class="arch-node">Sentiment Agent</div>
-          <div class="arch-node">Gap Analyzer</div>
-          <div class="arch-node">Resource Allocator</div>
-        </div>
-      </div>
-      <div class="arch-conn">↓ ↓ ↓ derived intelligence + nudges ↓ ↓ ↓</div>
-      <div class="arch-layer lc2">
-        <div class="arch-lbl">Consumer<br>Layer</div>
-        <div class="arch-nodes">
-          <div class="arch-node">CSM Agent</div>
-          <div class="arch-node">Sales Agent</div>
-          <div class="arch-node">SA Agent</div>
-          <div class="arch-node">PM Agent</div>
-          <div class="arch-node">Engineering Agent</div>
-          <div class="arch-node">Leadership Agent</div>
-        </div>
-      </div>
-      <div class="arch-conn">↕ ↕ ↕ resource signals ↕ ↕ ↕</div>
-      <div class="arch-layer lr">
-        <div class="arch-lbl">Resource<br>Intelligence</div>
-        <div class="arch-nodes">
-          <div class="arch-node">Utilization Tracker</div>
-          <div class="arch-node">Experience Matcher</div>
-          <div class="arch-node">Bandwidth Analyzer</div>
-          <div class="arch-node">Assignment Recommender</div>
-        </div>
-      </div>
+      <span class="badge gn">● Production</span>
+      <span class="badge bl">Anthropic Claude</span>
+      <span class="badge pr">5 Specialist Skills</span>
+      <span class="badge am">LangGraph Orchestration</span>
+      <span class="badge tl">MongoDB Atlas</span>
     </div>
   </section>
 
   <hr class="divider">
 
-  <!-- Layer 1: Gatherer -->
   <section>
-    <div class="layer-header">
-      <div class="layer-icon g">📡</div>
-      <div><h3>Layer 1: Gatherer Agents</h3><p>Always-on, real-time signal collection from every client touchpoint</p></div>
-    </div>
-    <div class="lc">
-      <p>Gatherer agents operate 24/7, monitoring all client communication channels in real-time. When a signal arrives — a client email, a Jira comment, a Confluence update, a meeting transcript — the agent indexes it immediately and nudges the Processor Agent Manager with a structured change event.</p>
-      <div class="opt-list" style="margin-top:16px">
-        <div class="opt-item"><span class="opt-icon">📧</span><div><strong>Email Agent</strong> <span>— Forward any client email to the platform. The agent extracts requirements, sentiment, and action items. No login needed — just forward and it's processed.</span></div></div>
-        <div class="opt-item"><span class="opt-icon">🎫</span><div><strong>Jira Watcher</strong> <span>— Real-time webhooks on ticket creation, status changes, and comments. Detects requirement changes, priority shifts, and blockers automatically.</span></div></div>
-        <div class="opt-item"><span class="opt-icon">📝</span><div><strong>Confluence Listener</strong> <span>— Monitors page edits and new documents. When a solution doc changes, downstream processors are notified within seconds.</span></div></div>
-        <div class="opt-item"><span class="opt-icon">🎙️</span><div><strong>Meeting Transcriber</strong> <span>— Processes meeting recordings and extracts decisions, action items, and sentiment shifts. Links findings to relevant projects.</span></div></div>
-        <div class="opt-item"><span class="opt-icon">💬</span><div><strong>Slack Monitor</strong> <span>— Watches project channels for client mentions, escalation signals, and informal requirement changes that never make it to Jira.</span></div></div>
-        <div class="opt-item"><span class="opt-icon">🔗</span><div><strong>CRM Sync</strong> <span>— Pulls deal stage changes, renewal dates, and relationship health scores. Feeds into resource planning and sentiment analysis.</span></div></div>
+    <h2>What it does today</h2>
+    <p class="sd">Think of it as a knowledgeable colleague who has read every Confluence page and Jira ticket — and gives you a structured answer in under a minute.</p>
+    <ul class="fl">
+      <li>Submit a Jira ticket ID, describe a client requirement, or upload a document (PDF, images, text)</li>
+      <li>The agent searches Jira, Confluence, Capillary product docs, and docs.capillarytech.com for real precedents</li>
+      <li>Returns a structured assessment: <strong>Problem → Verdict → Approach → Complexity → References → Open Questions</strong></li>
+      <li>Can generate full documents: BRDs, SDDs, Gap Analyses, Architecture Diagrams</li>
+      <li>When a request is too complex, it flags for SA escalation with a pre-filled summary</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>The smart workflow</h2>
+    <p class="sd">Step-by-step workflow powered by <strong>LangGraph</strong> — each station does one job well.</p>
+    <div class="dia">
+      <div class="dr">
+        <div class="dn" style="background:var(--bg2);border-color:var(--cn)">__start__</div>
+        <span class="da">→</span>
+        <div class="dn bl">preflight<small>Gate + Intent + Client</small></div>
       </div>
-      <div class="impact-ex" style="margin-top:20px">
-        <h4>Example: Email triggers cascade</h4>
-        <div class="impact-flow">
-          <div class="inode t">Client Email Received</div>
-          <span class="iarr">→</span>
-          <div class="inode t">Indexed & Classified</div>
-          <span class="iarr">→</span>
-          <div class="inode d">Nudge to Processor Manager</div>
-          <span class="iarr">→</span>
-          <div class="inode cn">Cascade Activated</div>
+      <div style="display:flex;gap:24px;margin-left:40px;margin-top:8px">
+        <div class="db">
+          <div class="dr">
+            <span class="dl">off-topic</span>
+            <div class="dn" style="border-color:var(--rdbd);color:var(--rd);background:var(--rdb)">🚫 Refusal → END</div>
+          </div>
+          <div class="dr">
+            <span class="dl">on-topic</span>
+            <div class="dn tl">loadSkills<small>Skill catalogue</small></div>
+            <span class="da">→</span>
+            <div class="dn am">skillRouter<small>Choose path</small></div>
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;gap:24px;margin-left:80px;margin-top:8px">
+        <div class="db">
+          <div class="dr"><span class="dl">Standard assessment</span></div>
+          <div class="dr" style="margin-left:12px">
+            <div class="dn bl">research<small>Search & reason</small></div>
+            <span class="da">⇄</span>
+            <div class="dn am">compactIfNeeded<small>Token check</small></div>
+            <span class="da" style="font-size:12px;color:var(--tm)">loop</span>
+          </div>
+          <div class="dr" style="margin-left:12px;margin-top:4px">
+            <span class="da" style="margin-left:0">↓</span>
+            <div class="dn gn">validate<small>Quality check</small></div>
+            <span class="da">→</span>
+            <div class="dn" style="background:var(--bg2);border-color:var(--cn)">END</div>
+          </div>
+          <div class="dr" style="margin-top:16px"><span class="dl">Document generation (SDD / BRD / Gap)</span></div>
+          <div class="dr" style="margin-left:12px">
+            <div class="dn pr">researchFanOut<small>Parallel</small></div>
+            <span class="da">→</span>
+            <div class="dn pr">sectionWriter<small>Write</small></div>
+            <span class="da">→</span>
+            <div class="dn gn">skillValidate<small>Verify</small></div>
+            <span class="da">→</span>
+            <div class="dn" style="background:var(--bg2);border-color:var(--cn)">END</div>
+          </div>
         </div>
       </div>
     </div>
   </section>
 
-  <hr class="divider">
+  </section>
 
-  <!-- Layer 2: Processor -->
   <section>
-    <div class="layer-header">
-      <div class="layer-icon p">⚙️</div>
-      <div><h3>Layer 2: Processor Agents + Impact Dependency Graph</h3><p>Intelligent change propagation — one signal updates all affected documents</p></div>
+    <h2>Specialist skills</h2>
+    <p class="sd">The agent activates specialist capabilities depending on what you ask — like calling in a subject matter expert.</p>
+    <div class="cg c2" style="margin-top:4px">
+      <div class="cd"><h3>🎯 CR Evaluator</h3><p>Feasibility rubric for CR, BRD, and issue requests. Knows what's OOTB, what needs configuration, and what requires custom development in Capillary.</p></div>
+      <div class="cd"><h3>📋 PM Pipeline / BRD Writer</h3><p>Full 3-phase delivery: BRD Creation (question sets A-F, 21 sections) → Discovery Dashboard (prefilled, guardrails) → Jira Ticket Generation. Includes BRD evaluation & scoring.</p></div>
+      <div class="cd"><h3>📄 SDD Writer</h3><p>Generates Solution Design Documents with parallel research and section-by-section writing. Full SDD for new integrations, Lite SDD for CRs.</p></div>
+      <div class="cd"><h3>📊 Gap Analyzer</h3><p>Compares a BRD against Capillary capabilities. Scores each domain, identifies gaps, and suggests resolution paths with verified API evidence.</p></div>
+      <div class="cd"><h3>🖼️ Diagram Generator</h3><p>Creates visual architecture diagrams as Excalidraw JSON for solution architecture, workflows, and system flow visualisation.</p></div>
     </div>
-    <div class="lc">
-      <p>The <strong>Processor Agent Manager</strong> maintains an <strong>Impact Dependency Graph</strong> — a directed graph that maps which data sources affect which derived documents. When a change signal arrives from the Gatherer layer, the Manager traverses the graph to determine exactly which processing agents need to activate.</p>
-      <div class="impact-ex" style="margin-top:16px">
-        <h4>Impact Dependency Graph — Example Traversal</h4>
-        <div class="impact-flow">
-          <div class="inode t">Client Email (new req)</div>
-          <span class="iarr">→</span>
-          <div class="inode d">BRD Update</div>
-          <span class="iarr">→</span>
-          <div class="inode d">Gap Analysis Refresh</div>
-        </div>
-        <div class="impact-flow">
-          <div class="inode t">Client Email (new req)</div>
-          <span class="iarr">→</span>
-          <div class="inode d">Customer Sentiment Update</div>
-          <span class="iarr">→</span>
-          <div class="inode cn">CSM Nudge</div>
-        </div>
-        <div class="impact-flow">
-          <div class="inode t">Client Email (new req)</div>
-          <span class="iarr">→</span>
-          <div class="inode d">Integration Score Recalc</div>
-          <span class="iarr">→</span>
-          <div class="inode cn">Sales Upsell Alert</div>
-        </div>
-      </div>
-      <h3 style="margin-top:24px;margin-bottom:12px">Processing Agents</h3>
-      <div class="card-grid c3">
-        <div class="card"><h3>📋 BRD Agent</h3><p>Maintains living Business Requirements Documents. Auto-updates when new requirements are detected from any source.</p></div>
-        <div class="card"><h3>📐 SDD Agent</h3><p>Keeps Solution Design Documents current. Propagates requirement changes into technical architecture decisions.</p></div>
-        <div class="card"><h3>💚 Sentiment Agent</h3><p>Continuously scores client sentiment from emails, meeting tones, and Jira comment patterns. Alerts on negative trends.</p></div>
-        <div class="card"><h3>📊 Gap Analyzer</h3><p>Compares current BRD against Capillary capabilities. Scores each domain and identifies implementation gaps in real-time.</p></div>
-        <div class="card"><h3>🔢 Integration Scorer</h3><p>Calculates integration complexity and health scores. Tracks API usage, error rates, and configuration drift.</p></div>
-        <div class="card"><h3>👥 Resource Allocator</h3><p>Matches projects to people based on experience, bandwidth, and domain expertise. Recommends optimal assignments.</p></div>
-      </div>
+    <p style="margin-top:16px">Adding a new skill means creating a folder with instructions — no code changes needed. Skills declare their own execution mode, research needs, and validation rules.</p>
+  </section>
+
+  <section>
+    <h2>BRD Pipeline — deep dive</h2>
+    <p class="sd">The newest skill: a complete PM pipeline from requirements gathering to Jira backlog creation.</p>
+    <div class="ol">
+      <div class="oi"><span class="oi-i">📝</span><div><strong>Phase 1: BRD Creation</strong> <span>— Guided question sets (A-F) covering scope, modules, integrations, timelines. Generates a 21-section BRD with member journey flows. Auto-runs evaluation with guardrail checks (G1-G6).</span></div></div>
+      <div class="oi"><span class="oi-i">🔍</span><div><strong>Phase 2: Discovery Dashboard</strong> <span>— Prefilled from signed BRD. Yes/No quick-confirm section, live guardrail status panel, clarification register. Must reach 100% completion to proceed.</span></div></div>
+      <div class="oi"><span class="oi-i">🎫</span><div><strong>Phase 3: Jira Tickets</strong> <span>— Generates Epics (one per module) → Stories (one per FR) → Acceptance Criteria. All fields populated dynamically from the signed BRD.</span></div></div>
+      <div class="oi"><span class="oi-i">📊</span><div><strong>BRD Evaluation Mode</strong> <span>— Upload an existing BRD and get it scored: 12-section completeness check, 6 guardrail categories, key gaps report with IDs/owners/due dates, and top improvement rewrites.</span></div></div>
+    </div>
+    <p style="margin-top:12px"><strong>Gate system:</strong> Gate 1 requires zero critical gaps + all sections ≥ 3/5 + client BPO sign-off. Gate 2 requires 100% discovery + all guardrail items resolved. No shortcuts.</p>
+  </section>
+
+  <section>
+    <h2>Research tools</h2>
+    <p class="sd">The agent never guesses — it searches real sources before every answer.</p>
+    <div class="cd" style="overflow-x:auto">
+      <table class="tt">
+        <thead><tr><th>Source</th><th>What it does</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Jira</strong></td><td>Fetches specific tickets, searches for related CRs, posts solution summaries as comments</td></tr>
+          <tr><td><strong>Confluence</strong></td><td>Searches solution docs and architecture pages, retrieves full content, creates new pages</td></tr>
+          <tr><td><strong>Kapa Docs</strong></td><td>Semantic search over Capillary product documentation via MCP — finds relevant doc chunks</td></tr>
+          <tr><td><strong>Web Search</strong></td><td>Searches docs.capillarytech.com using the sitemap — works offline for cached results</td></tr>
+        </tbody>
+      </table>
     </div>
   </section>
 
-  <hr class="divider">
-<!-- CONTENT_PART_2 -->
-
-  <!-- Resource Intelligence -->
   <section>
-    <div class="layer-header">
-      <div class="layer-icon r">📊</div>
-      <div><h3>Resource Intelligence & Utilization</h3><p>Smart allocation based on experience, bandwidth, and client needs</p></div>
-    </div>
-    <div class="lc">
-      <p>Resource Intelligence is deeply integrated into both the Processor and Consumer layers. It continuously tracks team capacity from meetings, Jira activity, and Confluence contributions — then makes intelligent assignment recommendations.</p>
-      <div class="opt-list" style="margin-top:16px">
-        <div class="opt-item"><span class="opt-icon">🎯</span><div><strong>Experience-based matching</strong> <span>— A PM with 3 years of retail loyalty experience gets recommended for new retail projects. Domain expertise is tracked and weighted.</span></div></div>
-        <div class="opt-item"><span class="opt-icon">📈</span><div><strong>Bandwidth analysis</strong> <span>— Real-time utilization calculated from meeting load, active Jira tickets, and Confluence activity. Prevents overallocation before it happens.</span></div></div>
-        <div class="opt-item"><span class="opt-icon">🔄</span><div><strong>Sentiment-driven reassignment</strong> <span>— When client sentiment drops below threshold, the system can recommend PM or SA reassignment with full context handoff. Human approval required.</span></div></div>
-        <div class="opt-item"><span class="opt-icon">📋</span><div><strong>Utilization dashboards</strong> <span>— Leadership gets real-time visibility into team capacity, project health, and resource bottlenecks — without asking anyone for a status update.</span></div></div>
-      </div>
+    <h2>Two AI models, used wisely</h2>
+    <p class="sd">Fast model for quick tasks, powerful model only when genuinely needed.</p>
+    <div class="ml" style="margin-top:16px">
+      <div class="mr"><span class="badge pr" style="flex-shrink:0">Sonnet 4</span><span class="mn">Reasoning</span><span class="mt">Complex analysis, multi-source synthesis, architectural decisions</span></div>
+      <div class="mr"><span class="badge bl" style="flex-shrink:0">Haiku 4.5</span><span class="mn">Fast tasks</span><span class="mt">Classification, summarisation, simple sections, skill selection — ~50× cheaper</span></div>
     </div>
   </section>
 
-  <hr class="divider">
-
-  <!-- Layer 3: Consumer -->
   <section>
-    <div class="layer-header">
-      <div class="layer-icon c">🧑‍💼</div>
-      <div><h3>Layer 3: Consumer Agents</h3><p>Persona-aware AI assistants that serve the right intelligence to the right person</p></div>
-    </div>
-    <div class="lc">
-      <p>Consumer Agents are the user-facing layer. Each agent understands the persona of the person asking — a CSM gets sentiment and relationship insights, a Sales rep gets gap analysis and upsell opportunities, an SA gets technical feasibility and architecture guidance.</p>
-      <div class="card-grid c2" style="margin-top:16px">
-        <div class="card"><h3>💚 CSM Agent</h3><p><strong>Serves:</strong> Client sentiment trends, relationship health, risk alerts, renewal readiness. <strong>Nudges:</strong> "Client X sentiment dropped 15% this week — 3 unresolved tickets flagged."</p></div>
-        <div class="card"><h3>💰 Sales Agent</h3><p><strong>Serves:</strong> Implementation gaps, upsell opportunities, competitive positioning. <strong>Nudges:</strong> "Client Y using only 40% of licensed modules — loyalty+ and analytics are natural upsells."</p></div>
-        <div class="card"><h3>🔧 SA Agent</h3><p><strong>Serves:</strong> Technical feasibility, architecture recommendations, effort estimates. <strong>Nudges:</strong> "Similar integration done for Client Z in Q2 — reusable components available."</p></div>
-        <div class="card"><h3>📋 PM Agent</h3><p><strong>Serves:</strong> Project health, timeline risks, resource conflicts, dependency tracking. <strong>Nudges:</strong> "Sprint velocity dropped 30% — 2 blockers need escalation."</p></div>
-        <div class="card"><h3>👨‍💻 Engineering Agent</h3><p><strong>Serves:</strong> Code context, API docs, test coverage gaps, deployment readiness. <strong>Nudges:</strong> "Integration test coverage for Module X at 45% — 3 critical paths untested."</p></div>
-        <div class="card"><h3>👔 Leadership Agent</h3><p><strong>Serves:</strong> Portfolio health, resource utilization, revenue risk, strategic insights. <strong>Nudges:</strong> "3 accounts showing declining sentiment — combined ARR at risk: $2.1M."</p></div>
-      </div>
+    <h2>Engineering optimizations</h2>
+    <p class="sd">Under the hood, several optimizations keep the agent fast and cost-efficient.</p>
+    <div class="ol">
+      <div class="oi"><span class="oi-i">⚡</span><div><strong>Parallel pre-flight</strong> <span>— Classification and skill detection run simultaneously, saving 300-500ms per request.</span></div></div>
+      <div class="oi"><span class="oi-i">🔀</span><div><strong>Parallel research agents</strong> <span>— Domain-specific Haiku sub-agents research Jira, Confluence, and docs simultaneously. 3-5× faster, 60-70% cheaper.</span></div></div>
+      <div class="oi"><span class="oi-i">🗜️</span><div><strong>Context compaction</strong> <span>— Long conversations auto-summarised to keep the context window lean. Full history preserved in DB.</span></div></div>
+      <div class="oi"><span class="oi-i">🚪</span><div><strong>Off-topic gate</strong> <span>— Fast Haiku classifier intercepts irrelevant requests before they reach the main loop.</span></div></div>
+      <div class="oi"><span class="oi-i">💰</span><div><strong>Model dispatch policy</strong> <span>— Every operation routed to the cheapest model that can handle it.</span></div></div>
+      <div class="oi"><span class="oi-i">📋</span><div><strong>Agent planning</strong> <span>— Auto-creates structured plans for complex tasks with real-time progress tracking.</span></div></div>
     </div>
   </section>
 
   <hr class="divider">
 
-  <!-- Software Factory -->
   <section>
-    <h2>AI-Assisted Software Factory</h2>
-    <p class="section-desc">Human-triggered pipelines that take a requirement from idea to deployment — with guardrails and approval gates at every stage.</p>
-    <p>Consumer agents can also be triggered by human input to execute end-to-end delivery pipelines. Each stage produces artifacts, notifies the relevant human for review, and only proceeds after approval.</p>
-    <div class="pipeline" style="margin-top:20px">
-      <div class="pipeline-lbl">Full delivery pipeline</div>
-      <div class="ps">📋 BRD</div><span class="pa">→</span>
-      <div class="ps h">👤 Review</div><span class="pa">→</span>
-      <div class="ps">📐 SDD</div><span class="pa">→</span>
-      <div class="ps h">👤 Review</div><span class="pa">→</span>
-      <div class="ps">🧪 Test Cases</div><span class="pa">→</span>
-      <div class="ps">💻 Code Gen</div><span class="pa">→</span>
-      <div class="ps h">👤 Code Review</div><span class="pa">→</span>
-      <div class="ps">✅ QA</div><span class="pa">→</span>
-      <div class="ps h">👤 Sign-off</div><span class="pa">→</span>
-      <div class="ps">🚀 Deploy</div>
+    <h2>Future Path — Neo & Codebase Intelligence</h2>
+    <p class="sd">Evolving from a documentation assistant into a full solution intelligence layer with code-level understanding.</p>
+
+    <div class="fb">
+      <h3>🧠 Neo Integration — Guide Users to the Best Solution</h3>
+      <p>Deep integration with <span class="hl">Capillary Neo (Extension 2.0)</span> — the low-code platform for custom dataflows. Instead of just saying "this needs a custom extension," the agent will:</p>
+      <p style="margin-top:8px">→ Show exactly which Neo dataflow template to use<br>→ Identify where an issue is coming from in existing Neo configuration<br>→ Suggest the optimal path (OOTB config vs. Neo workflow vs. Classic extension)<br>→ Generate Neo dataflow JSON scaffolds for common patterns</p>
     </div>
-    <div class="opt-list" style="margin-top:20px">
-      <div class="opt-item"><span class="opt-icon">📧</span><div><strong>Notification at every gate</strong> <span>— Approvers receive email or Slack notifications with a summary and one-click approve/reject. No dashboard login needed.</span></div></div>
-      <div class="opt-item"><span class="opt-icon">🔄</span><div><strong>Iterative refinement</strong> <span>— Rejection at any stage sends the artifact back to the AI with reviewer feedback. The agent refines and resubmits — no manual rewrite.</span></div></div>
-      <div class="opt-item"><span class="opt-icon">📊</span><div><strong>Full audit trail</strong> <span>— Every approval, rejection, and modification is logged with timestamps, actor, and rationale. Complete traceability from requirement to deployment.</span></div></div>
+
+    <div class="fb" style="margin-top:16px;background:linear-gradient(135deg,var(--blb),var(--gnb));border-color:var(--blbd)">
+      <h3>💻 Full Codebase Access</h3>
+      <p>The agent will gain access to <span class="hl" style="color:var(--bl)">Capillary's entire codebase</span> — enabling it to:</p>
+      <p style="margin-top:8px">→ Trace issues to their root cause in source code<br>→ Identify which service/module handles a specific feature<br>→ Show SAs exactly where to look when debugging client issues<br>→ Generate accurate effort estimates based on actual code complexity<br>→ Suggest code-level solutions with file paths and function references</p>
+    </div>
+
+    <h3 style="margin-top:24px;margin-bottom:12px">Roadmap</h3>
+    <div class="rl">
+      <div class="ri"><div class="rn">1</div><div><h3>Neo Dataflow Knowledge Base</h3><p>Index all Neo templates, dataflow patterns, and common configurations. Agent can recommend and scaffold Neo solutions.</p></div></div>
+      <div class="ri"><div class="rn">2</div><div><h3>Codebase Indexing</h3><p>Ingest Capillary service repositories. Build semantic search over code with function-level understanding.</p></div></div>
+      <div class="ri"><div class="rn">3</div><div><h3>Issue Root-Cause Tracing</h3><p>Given a bug report or client issue, trace through the codebase to identify the likely source — service, module, function.</p></div></div>
+      <div class="ri"><div class="rn">4</div><div><h3>Solution Path Advisor</h3><p>For any requirement, recommend the optimal path: OOTB → Config → Neo → Classic Extension → Custom Dev. With code-level evidence.</p></div></div>
+      <div class="ri"><div class="rn">5</div><div><h3>Merge into Capillary 360</h3><p>Become the SA/Engineering Consumer Agent in the unified platform — with full access to docs, code, Neo, and client context.</p></div></div>
     </div>
   </section>
 
   <hr class="divider">
 
-  <!-- Guardrails -->
   <section>
-    <h2>Guardrails & Human-in-the-Loop</h2>
-    <p class="section-desc">Every critical decision has a human checkpoint. AI does the work — humans make the decisions.</p>
-    <div class="gg">
-      <div class="gi"><div class="ic">🛡️</div><h4>Approval Gates</h4><p>No document is published, no code deployed, no resource reassigned without explicit human approval via email or Slack.</p></div>
-      <div class="gi"><div class="ic">🔒</div><h4>Confidence Thresholds</h4><p>Low-confidence outputs flagged for human review. High-confidence routine updates proceed autonomously — humans focus on exceptions.</p></div>
-      <div class="gi"><div class="ic">👁️</div><h4>Full Transparency</h4><p>Every agent action logged with reasoning. Humans can inspect why a decision was made and override at any point.</p></div>
-      <div class="gi"><div class="ic">⚡</div><h4>Kill Switch</h4><p>Any pipeline can be paused or terminated instantly. Agents respect scope boundaries and cannot access unauthorized systems.</p></div>
-      <div class="gi"><div class="ic">📏</div><h4>Quality Validation</h4><p>Every generated artifact passes validation rules before reaching a human. Malformed outputs are caught and regenerated automatically.</p></div>
-      <div class="gi"><div class="ic">🔐</div><h4>Role-Based Access</h4><p>Agents inherit persona permissions. A Sales agent cannot access engineering systems. A PM agent cannot approve deployments.</p></div>
-    </div>
-  </section>
-
-  <hr class="divider">
-
-  <!-- ROI -->
-  <section>
-    <h2>Impact & ROI</h2>
-    <p class="section-desc">Transforms reactive, manual processes into proactive, autonomous intelligence — with measurable business impact.</p>
-    <table class="roi-table">
-      <thead><tr><th>Activity</th><th>Today</th><th>With Capillary 360</th><th>Impact</th></tr></thead>
-      <tbody>
-        <tr><td>BRD creation</td><td class="old">3-5 days</td><td class="new">15 min + review</td><td>95% faster</td></tr>
-        <tr><td>Detecting sentiment shift</td><td class="old">Weeks (until escalation)</td><td class="new">Real-time alerts</td><td>Proactive</td></tr>
-        <tr><td>Gap analysis for upsell</td><td class="old">2-3 days SA effort</td><td class="new">Always current</td><td>3x more upsells</td></tr>
-        <tr><td>Resource allocation</td><td class="old">Gut feel + spreadsheets</td><td class="new">Data-driven recs</td><td>Better fit</td></tr>
-        <tr><td>Document staleness</td><td class="old">Outdated in days</td><td class="new">Living documents</td><td>Zero staleness</td></tr>
-        <tr><td>End-to-end delivery</td><td class="old">4-6 weeks</td><td class="new">Days with AI + gates</td><td>5-10x faster</td></tr>
-      </tbody>
-    </table>
-    <div class="exec-summary" style="margin-top:24px;background:linear-gradient(135deg, var(--green-bg), var(--teal-bg));border-color:var(--green-border)">
-      <h3>🎯 The Game Changer</h3>
-      <p>Work happens <span class="hl">24/7</span> — not just during business hours. Gatherer agents process client signals at 2 AM. By the time your team opens their laptop, the BRD is updated, sentiment is scored, and a Slack message is waiting: <em>"Client X sent new requirements last night. BRD updated. Review and approve?"</em></p>
-      <p style="margin-top:8px">One click to approve. One click to override. The AI does the work — humans make the decisions.</p>
-    </div>
-  </section>
-
-  <hr class="divider">
-
-  <!-- Current State & Roadmap -->
-  <section>
-    <h2>Where We Are Today</h2>
-    <p class="section-desc">We've built foundational components as individual capabilities. The vision is to unify them under the Capillary 360 umbrella — reusing the architecture, learnings, and proven patterns from production.</p>
-    <h3 style="margin-bottom:12px;color:var(--green)">✅ Built & Proven in Production</h3>
-    <div class="opt-list" style="margin-bottom:24px">
-      <div class="opt-item"><span class="opt-icon">🤖</span><div><strong>Solution Agent (Consumer Layer prototype)</strong> <span>— Multi-source research, structured assessments, skill-based document generation. Production-ready with multi-user auth.</span></div></div>
-      <div class="opt-item"><span class="opt-icon">📄</span><div><strong>SDD Writer & Gap Analyzer (Processor prototypes)</strong> <span>— Parallel research, section-by-section generation, validation rules. Proven architecture for derived document generation.</span></div></div>
-      <div class="opt-item"><span class="opt-icon">🔀</span><div><strong>Parallel Research Agents (Gatherer prototype)</strong> <span>— Domain-specific sub-agents that search Jira, Confluence, and docs simultaneously. 3-5x faster than sequential approaches.</span></div></div>
-      <div class="opt-item"><span class="opt-icon">🧠</span><div><strong>LangGraph Orchestration</strong> <span>— Proven workflow engine for multi-step agent coordination with branching, looping, and error recovery.</span></div></div>
-      <div class="opt-item"><span class="opt-icon">💾</span><div><strong>MongoDB + Store Adapter Pattern</strong> <span>— Scalable data layer with pluggable backends. Zero-change migrations proven in production.</span></div></div>
-      <div class="opt-item"><span class="opt-icon">📊</span><div><strong>Observability & Cost Tracking</strong> <span>— Full request tracing, model dispatch optimization, per-operation cost monitoring.</span></div></div>
-    </div>
-    <h3 style="margin-bottom:12px;color:var(--accent)">🔮 Unification Roadmap</h3>
-    <div class="roadmap-list">
-      <div class="roadmap-item"><div class="roadmap-num">1</div><div><h3>Gatherer Layer — Always-On Signal Collection</h3><p>Deploy webhook listeners for Jira, Confluence, and email ingestion. Build the indexing pipeline and change-event bus that feeds the Processor layer.</p></div></div>
-      <div class="roadmap-item"><div class="roadmap-num">2</div><div><h3>Impact Dependency Graph Engine</h3><p>Build the graph that maps data sources → derived documents → consumer agents. Enable automatic cascade propagation on any change event.</p></div></div>
-      <div class="roadmap-item"><div class="roadmap-num">3</div><div><h3>Processor Agent Manager</h3><p>Orchestration layer that receives change signals, traverses the dependency graph, and dispatches the right processing agents with minimal redundancy.</p></div></div>
-      <div class="roadmap-item"><div class="roadmap-num">4</div><div><h3>Resource Intelligence Module</h3><p>Utilization tracking from meetings/Jira/Confluence, experience-based project matching, and bandwidth-aware assignment recommendations.</p></div></div>
-      <div class="roadmap-item"><div class="roadmap-num">5</div><div><h3>Consumer Agent Personas</h3><p>Persona-aware response layer — CSM, Sales, SA, PM, Engineering, Leadership agents each with tailored context and action capabilities.</p></div></div>
-      <div class="roadmap-item"><div class="roadmap-num">6</div><div><h3>Software Factory Pipelines</h3><p>End-to-end delivery pipelines (BRD → SDD → Test Cases → Code → QA → Deploy) with human approval gates and email/Slack notifications.</p></div></div>
-    </div>
-  </section>
-
-  <hr class="divider">
-
-  <!-- Tech Stack -->
-  <section>
-    <h2>Technology Foundation</h2>
-    <p class="section-desc">Built on proven, scalable infrastructure — ready for enterprise deployment.</p>
-    <div class="card-grid c2">
-      <div class="card"><h3>🧠 Multi-Model AI</h3><p>Powerful reasoning models for complex analysis, fast models for classification and parallel tasks. Model-agnostic design supports Anthropic, OpenAI, and open-source.</p></div>
-      <div class="card"><h3>🔀 LangGraph</h3><p>Production-grade workflow orchestration with branching, looping, parallel execution, and automatic error recovery.</p></div>
-      <div class="card"><h3>💾 MongoDB Atlas</h3><p>Cloud-native database with automatic scaling, zero-downtime deployments, and enterprise security.</p></div>
-      <div class="card"><h3>📡 Event-Driven</h3><p>Webhook-first architecture for real-time signal processing. Email forwarding, Jira webhooks, Confluence events — all within seconds.</p></div>
-      <div class="card"><h3>🔐 Enterprise Security</h3><p>Multi-user auth with SSO, role-based access control, audit logging, and data isolation. Every action is traceable.</p></div>
-      <div class="card"><h3>📊 Observability</h3><p>Full-stack monitoring with LangSmith/Langfuse. Cost tracking per operation, quality scoring, and performance dashboards.</p></div>
-    </div>
+    <h2>Infrastructure</h2>
+    <p class="sd">Production-ready deployment with enterprise features.</p>
+    <ul class="fl">
+      <li>Auto-deploys from GitHub to Railway on every push to <code>main</code></li>
+      <li>Node.js 20+, all configuration via environment variables</li>
+      <li>MongoDB Atlas for persistent storage — conversations, users, personas, audit logs</li>
+      <li>Multi-user auth with email/password, Google SSO, and Microsoft SSO</li>
+      <li>Admin panel with password policies, account lockout, and forced password change</li>
+      <li>Client persona detection — auto-adapts context for known clients</li>
+      <li>LangSmith/Langfuse observability — optional full request tracing</li>
+      <li>Cross-conversation context — searches past conversations for relevant findings</li>
+    </ul>
   </section>
 
 </div>
-<footer class="footer">Capillary Technologies — Professional Services Engineering · Capillary 360 Platform</footer>
+<footer class="footer">Capillary Technologies — Professional Services Engineering · <a href="/agent360.html" style="color:var(--ac);text-decoration:none">See Capillary 360 Vision →</a></footer>
 <script>
-function toggleTheme() {
-  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-  if (isDark) { document.documentElement.removeAttribute('data-theme'); localStorage.setItem('theme','light'); document.getElementById('themeToggle').textContent='🌙'; }
-  else { document.documentElement.setAttribute('data-theme','dark'); localStorage.setItem('theme','dark'); document.getElementById('themeToggle').textContent='☀️'; }
-}
-(function(){ if(localStorage.getItem('theme')==='dark') document.getElementById('themeToggle').textContent='☀️'; })();
-function goBack() {
-  // Only use history.back() if we came from the same origin (avoids file:// weirdness)
-  if (document.referrer && new URL(document.referrer).origin === location.origin) { history.back(); return; }
-  location.href = '/';
-}
+function toggleTheme(){const d=document.documentElement.getAttribute('data-theme')==='dark';if(d){document.documentElement.removeAttribute('data-theme');localStorage.setItem('theme','light');document.getElementById('themeToggle').textContent='🌙'}else{document.documentElement.setAttribute('data-theme','dark');localStorage.setItem('theme','dark');document.getElementById('themeToggle').textContent='☀️'}}
+(function(){if(localStorage.getItem('theme')==='dark')document.getElementById('themeToggle').textContent='☀️'})();
 </script>
 </body>
 </html>
