@@ -987,14 +987,17 @@ Return plain text only.`;
 
   graph.addConditionalEdges('skillRouter', (state) => {
     if (state.executionMode === 'multi-node') return 'researchFanOut';
-    // Skip parallel research if no tool tags require it (meta-questions, simple queries)
+    // Skip research entirely if no tool tags require it (meta-questions, simple queries)
     const researchDomains = ['jira', 'confluence', 'kapa_docs', 'web_search'];
     const hasResearchTags = (state.toolTags || []).some(t => researchDomains.includes(t));
     if (!hasResearchTags) {
-      console.log(`[graph:routing] No research tags — skipping parallel research, going direct to synthesise`);
+      console.log(`[graph:routing] No research tags — skipping research, going direct to synthesise`);
       return 'synthesise';
     }
-    return 'parallelResearch';
+    // For regular assessments, Sonnet decides tool calls (sequential research loop)
+    // Parallel Haiku research is only used for multi-node document generation above
+    console.log(`[graph:routing] Research tags present — routing to Sonnet research loop`);
+    return 'research';
   });
 
   // Parallel research: parallelResearch → synthesise (success) or research (fallback)
