@@ -252,6 +252,7 @@ export async function runAgent({ problemText, history, userId, conversationId, o
     });
   } catch (err) {
     if (err instanceof Anthropic.APIError) throw friendlyError(err);
+    console.error('[orchestrator] Graph execution error:', err.message, err.stack?.split('\n').slice(0, 3).join('\n'));
     throw new AgentError(`Something went wrong: ${err.message}`, err.message);
   }
 

@@ -355,7 +355,7 @@ export function buildGraph(callbacks, baseSystemPrompt) {
   async function writeSectionContent({ section, problemText, researchResults, sectionInstructions, skillId }) {
     const MODEL_MAP = {
       haiku:  'claude-haiku-4-5-20251001',
-      sonnet: 'claude-sonnet-4-20250514',
+      sonnet: 'claude-sonnet-4-6',
     };
     const model = MODEL_MAP[section.model] || MODEL_MAP.haiku;
     const maxTokens = section.maxTokens || (section.model === 'sonnet' ? 4096 : 1024);
@@ -510,11 +510,11 @@ export function buildGraph(callbacks, baseSystemPrompt) {
     console.log(`[graph:synthesise] Turn ${state.turnCount + 1}, ${tools.length} tools, ${messages.length} messages`);
 
     const stream = anthropic.messages.stream({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-6',
       max_tokens: maxTokens,
       system: state.systemPrompt,
       messages,
-      tools,
+      ...(tools.length > 0 ? { tools } : {}),
       stream: true,
     });
 
@@ -672,11 +672,11 @@ export function buildGraph(callbacks, baseSystemPrompt) {
     console.log(`[graph:research] Turn ${state.turnCount + 1}, ${tools.length} tools, ${state.messages.length} messages`);
 
     const stream = anthropic.messages.stream({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-6',
       max_tokens: maxTokens,
       system: state.systemPrompt,
       messages: state.messages,
-      tools,
+      ...(tools.length > 0 ? { tools } : {}),
       stream: true,
     });
 
