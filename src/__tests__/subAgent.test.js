@@ -8,7 +8,7 @@ import { describe, it, expect } from 'vitest';
 import fc from 'fast-check';
 import { runSubAgent } from '../subAgent.js';
 
-const VALID_MODELS = ['claude-haiku-4-5-20251001', 'claude-sonnet-4-20250514'];
+const VALID_MODELS = ['claude-haiku-4-5-20251001', 'claude-sonnet-4-6'];
 
 describe('runSubAgent', () => {
   /**
@@ -49,9 +49,9 @@ describe('runSubAgent', () => {
     }).not.toThrow();
   });
 
-  it('does not throw for valid model "claude-sonnet-4-20250514" (validation only)', () => {
+  it('does not throw for valid model "claude-sonnet-4-6" (validation only)', () => {
     expect(() => {
-      const model = 'claude-sonnet-4-20250514';
+      const model = 'claude-sonnet-4-6';
       if (!VALID_MODELS.includes(model)) {
         throw new Error(`Invalid model`);
       }

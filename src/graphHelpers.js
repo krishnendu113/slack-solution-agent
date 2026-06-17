@@ -18,7 +18,7 @@ export const BRANCH_TOOLS = {
 
 export const MODEL_MAP = {
   haiku:  'claude-haiku-4-5-20251001',
-  sonnet: 'claude-sonnet-4-20250514',
+  sonnet: 'claude-sonnet-4-6',
 };
 
 // ─── extractSectionInstructions ──────────────────────────────────────────────

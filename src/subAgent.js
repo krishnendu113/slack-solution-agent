@@ -10,7 +10,7 @@
  *
  * Usage:
  *   const text = await runSubAgent({ systemPrompt, userContent, operation: 'classify' });
- *   const text = await runSubAgent({ systemPrompt, userContent, model: 'claude-sonnet-4-20250514', maxTokens: 4096, operation: 'section:api-flows' });
+ *   const text = await runSubAgent({ systemPrompt, userContent, model: 'claude-sonnet-4-6', maxTokens: 4096, operation: 'section:api-flows' });
  */
 
 import Anthropic from '@anthropic-ai/sdk';
@@ -19,7 +19,7 @@ import Anthropic from '@anthropic-ai/sdk';
 
 const VALID_MODELS = new Set([
   'claude-haiku-4-5-20251001',
-  'claude-sonnet-4-20250514',
+  'claude-sonnet-4-6',
 ]);
 
 // ─── SDK Client ───────────────────────────────────────────────────────────────

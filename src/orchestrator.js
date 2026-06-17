@@ -36,6 +36,9 @@ function friendlyError(err) {
   const status = err.status || 0;
   const body = err.error?.error?.message || err.error?.message || msg;
 
+  // Always log the full API error for debugging
+  console.error(`[orchestrator] Anthropic API Error: status=${status} body="${body}" raw="${msg}"`);
+
   // Budget / billing errors
   if (body.includes('credit balance is too low') || body.includes('billing') || body.includes('insufficient_quota'))
     return new AgentError("The AI budget has been exhausted. Please contact your admin to top up credits at console.anthropic.com.", body);
@@ -59,6 +62,10 @@ function friendlyError(err) {
 
   // Invalid request (catch-all for 400s with useful message)
   if (status === 400) return new AgentError(`The AI request was invalid: ${body.slice(0, 150)}`, body);
+
+  // Model not found / deprecated
+  if (body.includes('model') && (body.includes('not found') || body.includes('deprecated') || body.includes('not exist') || body.includes('invalid')))
+    return new AgentError(`The AI model is no longer available. This is a configuration issue — please contact your admin.`, body);
 
   return new AgentError(`Something went wrong while processing your request. Please try again or start a new chat.`, body);
 }
