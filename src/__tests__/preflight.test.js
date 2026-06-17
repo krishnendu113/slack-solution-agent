@@ -219,9 +219,9 @@ describe('runPreflight — fail-open on errors', () => {
   });
 
   it('returns fail-open defaults on timeout', async () => {
-    // Simulate a call that takes longer than 3 seconds
+    // Simulate a call that takes longer than 5 seconds (preflight timeout)
     runSubAgent.mockImplementationOnce(() =>
-      new Promise(resolve => setTimeout(() => resolve('{}'), 5000))
+      new Promise(resolve => setTimeout(() => resolve('{}'), 7000))
     );
 
     const result = await runPreflight('Check something');

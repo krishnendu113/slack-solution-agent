@@ -14,7 +14,7 @@ import { listSkills } from './skillLoader.js';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const PREFLIGHT_TIMEOUT_MS = 3000;
+const PREFLIGHT_TIMEOUT_MS = 5000;
 const OFF_TOPIC_CONFIDENCE_THRESHOLD = 0.85;
 
 const VALID_TOOL_TAGS = new Set(['jira', 'confluence', 'kapa_docs', 'web_search', 'skills']);
@@ -182,8 +182,9 @@ export async function runPreflight(problemText) {
       ),
     ]);
 
-    // Parse the response
-    const parsed = JSON.parse(result);
+    // Parse the response — strip markdown fences if model wraps JSON
+    const cleaned = result.trim().replace(/^```(?:json)?\s*\n?/, '').replace(/\n?\s*```$/, '');
+    const parsed = JSON.parse(cleaned);
 
     // Validate and extract fields
     const offTopicConfidence = typeof parsed.offTopicConfidence === 'number'

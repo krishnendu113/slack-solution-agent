@@ -23,6 +23,17 @@ Return { "client": null } if no specific client name is mentioned.
 Only return a name if it is clearly a client/company name (not Capillary itself).`;
 
 /**
+ * Strips markdown code fences from a string to extract raw JSON.
+ */
+function stripJsonFences(str) {
+  const trimmed = str.trim();
+  // Remove ```json ... ``` or ``` ... ```
+  const fenceMatch = trimmed.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?\s*```$/);
+  if (fenceMatch) return fenceMatch[1].trim();
+  return trimmed;
+}
+
+/**
  * Extracts client name from problem text using Haiku.
  * Returns slug string or null.
  */
@@ -33,7 +44,7 @@ export async function detectClientName(problemText) {
       userContent: problemText.slice(0, 500),
       operation: 'client-detect',
     });
-    const parsed = JSON.parse(raw);
+    const parsed = JSON.parse(stripJsonFences(raw));
     if (!parsed.client) return null;
     const slug = slugify(parsed.client);
     if (!slug) return null;
